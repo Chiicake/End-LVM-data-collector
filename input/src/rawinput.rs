@@ -33,9 +33,9 @@ use windows::Win32::UI::Input::RawInput::{
 #[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrW,
-    PostThreadMessageW, RegisterClassW, SetWindowLongPtrW, TranslateMessage, CS_HREDRAW,
-    CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HMENU, MSG, WM_INPUT, WM_NCDESTROY, WM_QUIT,
-    WNDCLASSW, WS_OVERLAPPEDWINDOW,
+    GetForegroundWindow, PostThreadMessageW, RegisterClassW, SetWindowLongPtrW,
+    TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HMENU, MSG, WM_INPUT,
+    WM_NCDESTROY, WM_QUIT, WNDCLASSW, WS_OVERLAPPEDWINDOW,
 };
 
 #[cfg(windows)]
@@ -47,11 +47,11 @@ pub struct RawInputCollectorImpl {
 
 #[cfg(windows)]
 impl RawInputCollectorImpl {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(target_hwnd: Option<isize>) -> io::Result<Self> {
         let (tx, rx) = mpsc::channel();
         let (ready_tx, ready_rx) = mpsc::channel();
 
-    let handle = thread::spawn(move || run_message_loop(tx, ready_tx));
+        let handle = thread::spawn(move || run_message_loop(tx, ready_tx, target_hwnd));
 
     let thread_id = ready_rx
         .recv()
@@ -94,7 +94,17 @@ impl Drop for RawInputCollectorImpl {
 }
 
 #[cfg(windows)]
-fn run_message_loop(tx: Sender<InputEvent>, ready_tx: Sender<io::Result<u32>>) {
+struct RawInputContext {
+    sender: Sender<InputEvent>,
+    target_hwnd: Option<HWND>,
+}
+
+#[cfg(windows)]
+fn run_message_loop(
+    tx: Sender<InputEvent>,
+    ready_tx: Sender<io::Result<u32>>,
+    target_hwnd: Option<isize>,
+) {
     unsafe {
         let class_name = to_wide("collector_rawinput_window");
         let wnd_class = WNDCLASSW {
@@ -135,7 +145,11 @@ fn run_message_loop(tx: Sender<InputEvent>, ready_tx: Sender<io::Result<u32>>) {
             return;
         }
 
-        let tx_box = Box::new(tx);
+        let ctx = RawInputContext {
+            sender: tx,
+            target_hwnd: target_hwnd.map(|hwnd| HWND(hwnd)),
+        };
+        let tx_box = Box::new(ctx);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(tx_box) as isize);
 
         let devices = [
@@ -185,7 +199,7 @@ unsafe extern "system" fn window_proc(
             LRESULT(0)
         }
         WM_NCDESTROY => {
-            let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut Sender<InputEvent>;
+            let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut RawInputContext;
             if !ptr.is_null() {
                 drop(Box::from_raw(ptr));
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -199,6 +213,12 @@ unsafe extern "system" fn window_proc(
 #[cfg(windows)]
 fn handle_raw_input(hwnd: HWND, lparam: LPARAM) -> io::Result<()> {
     unsafe {
+        let ctx = context_from_hwnd(hwnd)?;
+        if let Some(target) = ctx.target_hwnd {
+            if GetForegroundWindow() != target {
+                return Ok(());
+            }
+        }
         let mut size = 0u32;
         GetRawInputData(
             HRAWINPUT(lparam.0 as isize),
@@ -227,7 +247,7 @@ fn handle_raw_input(hwnd: HWND, lparam: LPARAM) -> io::Result<()> {
 
         let raw = &*(buffer.as_ptr() as *const RAWINPUT);
         let timestamp = qpc_now()?;
-        let sender = sender_from_hwnd(hwnd)?;
+        let sender = ctx.sender.clone();
 
         match raw.header.dwType {
             RIM_TYPEKEYBOARD => {
@@ -332,16 +352,16 @@ fn emit_x_buttons(
 }
 
 #[cfg(windows)]
-fn sender_from_hwnd(hwnd: HWND) -> io::Result<Sender<InputEvent>> {
+fn context_from_hwnd(hwnd: HWND) -> io::Result<&'static RawInputContext> {
     unsafe {
-        let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut Sender<InputEvent>;
+        let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut RawInputContext;
         if ptr.is_null() {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
-                "missing rawinput sender",
+                "missing rawinput context",
             ));
         }
-        Ok((*ptr).clone())
+        Ok(&*ptr)
     }
 }
 
@@ -369,7 +389,7 @@ pub struct RawInputCollectorImpl;
 
 #[cfg(not(windows))]
 impl RawInputCollectorImpl {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(_target_hwnd: Option<isize>) -> io::Result<Self> {
         Err(io::Error::new(
             io::ErrorKind::Other,
             "RawInput requires Windows",

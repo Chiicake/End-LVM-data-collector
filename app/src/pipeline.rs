@@ -5,6 +5,9 @@ use std::time::Duration;
 use aggregator::{aggregate_window_with_compiled, AggregatorState, CursorProvider};
 use capture::FrameSource;
 use collector_core::{InputEvent, Meta, Options, QpcTimestamp, StepIndex, STEP_MS};
+
+#[cfg(windows)]
+use collector_core::InputEventKind;
 use input::InputCollector;
 use writer::{SessionLayout, SessionWriter};
 
@@ -134,6 +137,7 @@ pub fn run_realtime_with_hwnd<S: FrameSource, I: InputCollector>(
     debug_cursor: bool,
     mut pipeline: SessionPipeline,
 ) -> io::Result<SessionLayout> {
+    let mut cursor_test = CursorTestState::new();
     set_per_monitor_dpi_awareness();
     loop {
         let frame = match capture.next_frame() {
@@ -153,6 +157,9 @@ pub fn run_realtime_with_hwnd<S: FrameSource, I: InputCollector>(
                 frame.width,
                 frame.height,
             )?;
+        if debug_cursor && cursor_test.triggered(&events) {
+            cursor_test.log_result(&cursor, debug_info.as_ref());
+        }
         if debug_cursor {
             if let Some(info) = debug_info {
                 eprintln!(
@@ -312,6 +319,61 @@ struct CursorDebug {
     pad_y: f32,
     record_x: f32,
     record_y: f32,
+}
+
+#[cfg(windows)]
+struct CursorTestState {
+    index: usize,
+}
+
+#[cfg(windows)]
+impl CursorTestState {
+    fn new() -> Self {
+        Self { index: 0 }
+    }
+
+    fn triggered(&self, events: &[InputEvent]) -> bool {
+        const TEST_KEY: &str = "Seven"; // F7
+        events.iter().any(|event| {
+            matches!(
+                event.kind,
+                InputEventKind::KeyDown { ref key } if key == TEST_KEY
+            )
+        })
+    }
+
+    fn log_result(&mut self, cursor: &CursorProvider, debug: Option<&CursorDebug>) {
+        let targets = [
+            ("top_left", 0.0, 0.0),
+            ("top_right", 1.0, 0.0),
+            ("bottom_right", 1.0, 1.0),
+            ("bottom_left", 0.0, 1.0),
+            ("center", 0.5, 0.5),
+        ];
+        let target = targets[self.index % targets.len()];
+        if let Some(debug) = debug {
+            eprintln!(
+                "[cursor-test] target={} expected=({:.2}, {:.2}) measured=({:.4}, {:.4}) record_xy=({:.1}, {:.1})",
+                target.0,
+                target.1,
+                target.2,
+                cursor.x_norm,
+                cursor.y_norm,
+                debug.record_x,
+                debug.record_y
+            );
+        } else {
+            eprintln!(
+                "[cursor-test] target={} expected=({:.2}, {:.2}) measured=({:.4}, {:.4})",
+                target.0,
+                target.1,
+                target.2,
+                cursor.x_norm,
+                cursor.y_norm
+            );
+        }
+        self.index = self.index.saturating_add(1);
+    }
 }
 
 #[allow(dead_code)]

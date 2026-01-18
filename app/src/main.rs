@@ -36,7 +36,7 @@ fn run() -> io::Result<()> {
 
     let layout = if let Some(hwnd) = args.target_hwnd {
         let capture = WgcCapture::new(options.capture.clone(), hwnd)?;
-        let input = input::RawInputCollector::new()?;
+        let input = input::RawInputCollector::new_with_target(Some(hwnd))?;
         let _cursor = CursorProvider {
             visible: false,
             x_norm: 0.0,

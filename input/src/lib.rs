@@ -16,7 +16,11 @@ pub struct RawInputCollector {
 
 impl RawInputCollector {
     pub fn new() -> io::Result<Self> {
-        let inner = rawinput::RawInputCollectorImpl::new()?;
+        Self::new_with_target(None)
+    }
+
+    pub fn new_with_target(target_hwnd: Option<isize>) -> io::Result<Self> {
+        let inner = rawinput::RawInputCollectorImpl::new(target_hwnd)?;
         Ok(Self {
             inner,
             buffer: VecDeque::new(),

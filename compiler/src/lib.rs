@@ -17,6 +17,10 @@ impl KeyState {
             down: HashSet::new(),
         }
     }
+
+    pub fn reset(&mut self) {
+        self.down.clear();
+    }
 }
 
 pub fn compile_action_string(
@@ -27,6 +31,11 @@ pub fn compile_action_string(
 ) -> String {
     let (dx, dy, wheel, bins) = compile_window(events, window_start, window_end, key_state);
     format_action_string(dx, dy, wheel, &bins)
+}
+
+pub fn empty_action_string() -> String {
+    let bins = vec![Vec::new(); BIN_COUNT];
+    format_action_string(0, 0, 0, &bins)
 }
 
 fn compile_window(
