@@ -6,6 +6,7 @@ use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use aggregator::CursorProvider;
+use capture::WgcCapture;
 use collector_core::{BuildInfo, InputEvent, Meta, Options, RECORD_HEIGHT, RECORD_WIDTH, STEP_MS};
 use pipeline::{ensure_dataset_root, PipelineConfig, SessionPipeline};
 
@@ -31,53 +32,63 @@ fn run() -> io::Result<()> {
     let meta = build_meta(&args.session_name);
     pipeline.write_options_meta(&options, &meta)?;
 
-    let events = if let Some(path) = args.events_jsonl.as_ref() {
-        load_events(path)?
+    let layout = if let Some(hwnd) = args.target_hwnd {
+        let capture = WgcCapture::new(options.capture.clone(), hwnd)?;
+        let input = input::MockInputCollector::new(Vec::new());
+        let cursor = CursorProvider {
+            visible: false,
+            x_norm: 0.0,
+            y_norm: 0.0,
+        };
+        pipeline::run_realtime(capture, input, &cursor, pipeline)?
     } else {
-        Vec::new()
-    };
-    let thoughts = if let Some(path) = args.thoughts_jsonl.as_ref() {
-        load_lines(path)?
-    } else {
-        Vec::new()
-    };
-    let frame = load_frame(args.frame_raw.as_ref())?;
+        let events = if let Some(path) = args.events_jsonl.as_ref() {
+            load_events(path)?
+        } else {
+            Vec::new()
+        };
+        let thoughts = if let Some(path) = args.thoughts_jsonl.as_ref() {
+            load_lines(path)?
+        } else {
+            Vec::new()
+        };
+        let frame = load_frame(args.frame_raw.as_ref())?;
 
-    let cursor = CursorProvider {
-        visible: false,
-        x_norm: 0.0,
-        y_norm: 0.0,
-    };
+        let cursor = CursorProvider {
+            visible: false,
+            x_norm: 0.0,
+            y_norm: 0.0,
+        };
 
-    let mut pipeline = pipeline;
-    let mut event_index = 0usize;
-    for step in 0..args.steps {
-        let window_start = step.saturating_mul(STEP_MS);
-        let window_end = window_start.saturating_add(STEP_MS);
+        let mut pipeline = pipeline;
+        let mut event_index = 0usize;
+        for step in 0..args.steps {
+            let window_start = step.saturating_mul(STEP_MS);
+            let window_end = window_start.saturating_add(STEP_MS);
 
-        while event_index < events.len() && events[event_index].qpc_ts < window_start {
-            event_index += 1;
+            while event_index < events.len() && events[event_index].qpc_ts < window_start {
+                event_index += 1;
+            }
+            let start_idx = event_index;
+            while event_index < events.len() && events[event_index].qpc_ts < window_end {
+                event_index += 1;
+            }
+            let window_events = &events[start_idx..event_index];
+            let thought = thoughts.get(step as usize).map(|s| s.as_str());
+
+            pipeline.process_window(
+                window_events,
+                window_start,
+                window_end,
+                step,
+                true,
+                &cursor,
+                &frame,
+                thought,
+            )?;
         }
-        let start_idx = event_index;
-        while event_index < events.len() && events[event_index].qpc_ts < window_end {
-            event_index += 1;
-        }
-        let window_events = &events[start_idx..event_index];
-        let thought = thoughts.get(step as usize).map(|s| s.as_str());
-
-        pipeline.process_window(
-            window_events,
-            window_start,
-            window_end,
-            step,
-            true,
-            &cursor,
-            &frame,
-            thought,
-        )?;
-    }
-
-    let layout = pipeline.finalize()?;
+        pipeline.finalize()?
+    };
     println!("session written to {}", layout.root_dir.display());
     Ok(())
 }
@@ -90,6 +101,7 @@ struct Args {
     frame_raw: Option<PathBuf>,
     events_jsonl: Option<PathBuf>,
     thoughts_jsonl: Option<PathBuf>,
+    target_hwnd: Option<isize>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -100,6 +112,7 @@ fn parse_args() -> Result<Args, String> {
     let mut frame_raw: Option<PathBuf> = None;
     let mut events_jsonl: Option<PathBuf> = None;
     let mut thoughts_jsonl: Option<PathBuf> = None;
+    let mut target_hwnd: Option<isize> = None;
 
     let mut iter = env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -128,6 +141,10 @@ fn parse_args() -> Result<Args, String> {
             "--thoughts-jsonl" => {
                 thoughts_jsonl = Some(next_value(&mut iter, &arg)?);
             }
+            "--target-hwnd" => {
+                let value = next_string(&mut iter, &arg)?;
+                target_hwnd = Some(parse_hwnd(&value)?);
+            }
             "--help" | "-h" => {
                 return Err(usage());
             }
@@ -140,7 +157,10 @@ fn parse_args() -> Result<Args, String> {
     let dataset_root = dataset_root.unwrap_or_else(|| PathBuf::from("D:/dataset"));
     let session_name = session_name.ok_or_else(|| "missing --session-name".to_string())?;
     let ffmpeg_path = ffmpeg_path.unwrap_or_else(|| PathBuf::from("ffmpeg"));
-    let steps = steps.ok_or_else(|| "missing --steps".to_string())?;
+    let steps = steps.unwrap_or(0);
+    if target_hwnd.is_none() && steps == 0 {
+        return Err("missing --steps (required for dry-run mode)".to_string());
+    }
 
     Ok(Args {
         dataset_root,
@@ -150,6 +170,7 @@ fn parse_args() -> Result<Args, String> {
         frame_raw,
         events_jsonl,
         thoughts_jsonl,
+        target_hwnd,
     })
 }
 
@@ -163,6 +184,7 @@ Options:
   --frame-raw <path>      Raw BGRA frame file (1280x720x4 bytes) to reuse
   --events-jsonl <path>   Input events JSONL with qpc_ts timestamps
   --thoughts-jsonl <path> Thoughts JSONL (one line per step)
+  --target-hwnd <hex>     Capture target HWND (enables WGC capture)
   --help                  Show this help
 "#;
     text.to_string()
@@ -184,6 +206,16 @@ fn next_string(
 ) -> Result<String, String> {
     iter.next()
         .ok_or_else(|| format!("missing value for {}", flag))
+}
+
+fn parse_hwnd(value: &str) -> Result<isize, String> {
+    if let Some(stripped) = value.strip_prefix("0x") {
+        isize::from_str_radix(stripped, 16).map_err(|_| "invalid hwnd hex".to_string())
+    } else {
+        value
+            .parse::<isize>()
+            .map_err(|_| "invalid hwnd value".to_string())
+    }
 }
 
 fn load_events(path: &Path) -> io::Result<Vec<InputEvent>> {
