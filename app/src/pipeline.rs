@@ -125,8 +125,11 @@ pub fn run_realtime_with_hwnd<S: FrameSource, I: InputCollector>(
     mut capture: S,
     mut input: I,
     target_hwnd: isize,
+    record_resolution: [u32; 2],
     mut pipeline: SessionPipeline,
 ) -> io::Result<SessionLayout> {
+    let record_width = record_resolution[0];
+    let record_height = record_resolution[1];
     loop {
         let frame = match capture.next_frame() {
             Ok(frame) => frame,
@@ -137,7 +140,8 @@ pub fn run_realtime_with_hwnd<S: FrameSource, I: InputCollector>(
         let window_end = frame.qpc_ts;
         let window_start = window_end.saturating_sub(STEP_MS);
         let events = input.drain_events(window_start, window_end)?;
-        let (is_foreground, cursor) = sample_foreground_and_cursor(target_hwnd)?;
+        let (is_foreground, cursor) =
+            sample_foreground_and_cursor(target_hwnd, record_width, record_height)?;
 
         pipeline.process_window(
             &events,
@@ -155,7 +159,11 @@ pub fn run_realtime_with_hwnd<S: FrameSource, I: InputCollector>(
 }
 
 #[cfg(windows)]
-fn sample_foreground_and_cursor(target_hwnd: isize) -> io::Result<(bool, CursorProvider)> {
+fn sample_foreground_and_cursor(
+    target_hwnd: isize,
+    record_width: u32,
+    record_height: u32,
+) -> io::Result<(bool, CursorProvider)> {
     unsafe {
         let target = HWND(target_hwnd);
         let fg = GetForegroundWindow();
@@ -173,29 +181,31 @@ fn sample_foreground_and_cursor(target_hwnd: isize) -> io::Result<(bool, CursorP
         }
 
         let mut point = windows::Win32::Foundation::POINT { x: 0, y: 0 };
-        if GetCursorPos(&mut point).as_bool() {
+        if GetCursorPos(&mut point).as_bool() && record_width > 0 && record_height > 0 {
             let mut client_point = point;
             if ScreenToClient(target, &mut client_point).as_bool() {
                 let mut rect = windows::Win32::Foundation::RECT::default();
                 if GetClientRect(target, &mut rect).as_bool() {
-                    let width = (rect.right - rect.left) as f32;
-                    let height = (rect.bottom - rect.top) as f32;
-                    if width > 0.0 && height > 0.0 {
-                        x_norm = (client_point.x as f32 / width).clamp(0.0, 1.0);
-                        y_norm = (client_point.y as f32 / height).clamp(0.0, 1.0);
+                    let src_w = (rect.right - rect.left).max(0) as f32;
+                    let src_h = (rect.bottom - rect.top).max(0) as f32;
+                    if src_w > 0.0 && src_h > 0.0 {
+                        let dst_w = record_width as f32;
+                        let dst_h = record_height as f32;
+                        let scale = (dst_w / src_w).min(dst_h / src_h);
+                        let scaled_w = src_w * scale;
+                        let scaled_h = src_h * scale;
+                        let pad_x = (dst_w - scaled_w) * 0.5;
+                        let pad_y = (dst_h - scaled_h) * 0.5;
+                        let record_x = (client_point.x as f32 * scale) + pad_x;
+                        let record_y = (client_point.y as f32 * scale) + pad_y;
+                        x_norm = (record_x / dst_w).clamp(0.0, 1.0);
+                        y_norm = (record_y / dst_h).clamp(0.0, 1.0);
                     }
                 }
             }
         }
 
-        Ok((
-            is_foreground,
-            CursorProvider {
-                visible,
-                x_norm,
-                y_norm,
-            },
-        ))
+        Ok((is_foreground, CursorProvider { visible, x_norm, y_norm }))
     }
 }
 
