@@ -243,13 +243,14 @@ impl Default for KeyboardSnapshot {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputEvent {
     pub qpc_ts: QpcTimestamp,
     pub kind: InputEventKind,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum InputEventKind {
     KeyDown { key: String },
     KeyUp { key: String },
@@ -258,7 +259,8 @@ pub enum InputEventKind {
     MouseButton { button: MouseButton, is_down: bool },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MouseButton {
     Left,
     Right,

@@ -7,3 +7,4 @@ edition = "2024"
 aggregator = { path = "../aggregator" }
 collector_core = { path = "../core", package = "core" }
 writer = { path = "../writer" }
+serde_json = "1.0"
