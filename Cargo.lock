@@ -39,6 +39,9 @@ version = "0.1.0"
 [[package]]
 name = "input"
 version = "0.1.0"
+dependencies = [
+ "core",
+]
 
 [[package]]
 name = "proc-macro2"
