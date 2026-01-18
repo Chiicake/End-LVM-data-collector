@@ -1,0 +1,13 @@
+[workspace]
+members = [
+  "core",
+  "capture",
+  "input",
+  "aggregator",
+  "compiler",
+  "events",
+  "writer",
+  "app",
+  "gui",
+]
+resolver = "2"
