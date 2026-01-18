@@ -15,7 +15,9 @@ name = "app"
 version = "0.1.0"
 dependencies = [
  "aggregator",
+ "capture",
  "core",
+ "input",
  "serde_json",
  "writer",
 ]
@@ -23,6 +25,9 @@ dependencies = [
 [[package]]
 name = "capture"
 version = "0.1.0"
+dependencies = [
+ "core",
+]
 
 [[package]]
 name = "compiler"

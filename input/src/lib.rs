@@ -1,7 +1,56 @@
 use std::collections::HashSet;
+use std::io;
 
 use collector_core::{InputEvent, InputEventKind, MouseButton, QpcTimestamp};
 
+pub trait InputCollector {
+    fn drain_events(&mut self, start: QpcTimestamp, end: QpcTimestamp) -> io::Result<Vec<InputEvent>>;
+}
+
+pub struct RawInputCollector;
+
+impl RawInputCollector {
+    pub fn new() -> io::Result<Self> {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "RawInput collector not implemented yet",
+        ))
+    }
+}
+
+impl InputCollector for RawInputCollector {
+    fn drain_events(&mut self, _start: QpcTimestamp, _end: QpcTimestamp) -> io::Result<Vec<InputEvent>> {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "RawInput collector not implemented yet",
+        ))
+    }
+}
+
+pub struct MockInputCollector {
+    events: Vec<InputEvent>,
+    index: usize,
+}
+
+impl MockInputCollector {
+    pub fn new(events: Vec<InputEvent>) -> Self {
+        Self { events, index: 0 }
+    }
+}
+
+impl InputCollector for MockInputCollector {
+    fn drain_events(&mut self, start: QpcTimestamp, end: QpcTimestamp) -> io::Result<Vec<InputEvent>> {
+        let mut out = Vec::new();
+        while self.index < self.events.len() && self.events[self.index].qpc_ts < start {
+            self.index += 1;
+        }
+        while self.index < self.events.len() && self.events[self.index].qpc_ts < end {
+            out.push(self.events[self.index].clone());
+            self.index += 1;
+        }
+        Ok(out)
+    }
+}
 #[derive(Debug, Default)]
 pub struct InputState {
     pub down_keys: HashSet<String>,

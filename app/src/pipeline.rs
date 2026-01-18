@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use aggregator::{aggregate_window_with_compiled, AggregatorState, CursorProvider};
-use collector_core::{InputEvent, Meta, Options, QpcTimestamp, StepIndex};
+use capture::FrameSource;
+use collector_core::{InputEvent, Meta, Options, QpcTimestamp, StepIndex, STEP_MS};
+use input::InputCollector;
 use writer::{SessionLayout, SessionWriter};
 
 const DEFAULT_FLUSH_LINES: u64 = 10;
@@ -72,6 +74,38 @@ impl SessionPipeline {
     pub fn finalize(self) -> io::Result<SessionLayout> {
         self.writer.finalize()
     }
+}
+
+pub fn run_realtime<S: FrameSource, I: InputCollector>(
+    mut capture: S,
+    mut input: I,
+    cursor: &CursorProvider,
+    mut pipeline: SessionPipeline,
+) -> io::Result<SessionLayout> {
+    loop {
+        let frame = match capture.next_frame() {
+            Ok(frame) => frame,
+            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => break,
+            Err(err) => return Err(err),
+        };
+
+        let window_end = frame.qpc_ts;
+        let window_start = window_end.saturating_sub(STEP_MS);
+        let events = input.drain_events(window_start, window_end)?;
+
+        pipeline.process_window(
+            &events,
+            window_start,
+            window_end,
+            frame.step_index,
+            true,
+            cursor,
+            &frame.data,
+            None,
+        )?;
+    }
+
+    pipeline.finalize()
 }
 
 pub fn default_session_name(now: &str, run_id: u32) -> String {
