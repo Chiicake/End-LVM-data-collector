@@ -156,16 +156,24 @@ pub fn run_realtime_with_hwnd<S: FrameSource, I: InputCollector>(
         if debug_cursor {
             if let Some(info) = debug_info {
                 eprintln!(
-                    "[cursor] step={} fg={} vis={} client=({}, {}) src={}x{} record={}x{} record_xy=({}, {}) norm=({:.4}, {:.4})",
+                    "[cursor] step={} fg={} vis={} dpi={} client=({}, {}) client_wh=({:.1}, {:.1}) src=({:.1}, {:.1}) src_wh=({:.1}, {:.1}) record_wh=({:.1}, {:.1}) scale={:.4} pad=({:.1}, {:.1}) record_xy=({:.1}, {:.1}) norm=({:.4}, {:.4})",
                     frame.step_index,
                     is_foreground,
                     cursor.visible,
+                    info.dpi,
                     info.client_x,
                     info.client_y,
+                    info.client_w,
+                    info.client_h,
+                    info.src_x,
+                    info.src_y,
                     info.src_w,
                     info.src_h,
                     info.record_w,
                     info.record_h,
+                    info.scale,
+                    info.pad_x,
+                    info.pad_y,
                     info.record_x,
                     info.record_y,
                     cursor.x_norm,
@@ -249,14 +257,22 @@ fn sample_foreground_and_cursor(
                         x_norm = (record_x / dst_w).clamp(0.0, 1.0);
                         y_norm = (record_y / dst_h).clamp(0.0, 1.0);
                         debug_info = Some(CursorDebug {
+                            dpi: dpi.round() as u32,
                             client_x: client_point.x,
                             client_y: client_point.y,
+                            client_w,
+                            client_h,
+                            src_x,
+                            src_y,
                             src_w: src_width,
                             src_h: src_height,
                             record_w: record_width,
                             record_h: record_height,
-                            record_x: record_x.round() as i32,
-                            record_y: record_y.round() as i32,
+                            scale,
+                            pad_x,
+                            pad_y,
+                            record_x,
+                            record_y,
                         });
                     }
                 }
@@ -280,14 +296,22 @@ fn set_per_monitor_dpi_awareness() {
 
 #[cfg(windows)]
 struct CursorDebug {
+    dpi: u32,
     client_x: i32,
     client_y: i32,
+    client_w: f32,
+    client_h: f32,
+    src_x: f32,
+    src_y: f32,
     src_w: u32,
     src_h: u32,
     record_w: u32,
     record_h: u32,
-    record_x: i32,
-    record_y: i32,
+    scale: f32,
+    pad_x: f32,
+    pad_y: f32,
+    record_x: f32,
+    record_y: f32,
 }
 
 #[allow(dead_code)]
