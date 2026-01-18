@@ -3,6 +3,8 @@ const tauriInvoke = window.__TAURI__?.tauri?.invoke;
 const statusPill = document.getElementById("status-pill");
 const statusMeta = document.getElementById("status-meta");
 const logOutput = document.getElementById("log-output");
+const windowPicker = document.getElementById("window-picker");
+const refreshWindowsBtn = document.getElementById("refresh-windows");
 
 const startSessionBtn = document.getElementById("start-session");
 const joinSessionBtn = document.getElementById("join-session");
@@ -85,6 +87,11 @@ function parseHwnd(value) {
   return parseInt(trimmed, 10);
 }
 
+function formatHwnd(value) {
+  if (!Number.isFinite(value)) return "";
+  return `0x${value.toString(16)}`;
+}
+
 async function invokeCommand(command, payload) {
   if (!tauriInvoke) {
     throw new Error("Tauri runtime not detected.");
@@ -96,7 +103,9 @@ async function startSession() {
   const datasetRoot = document.getElementById("dataset-root").value.trim();
   const sessionName = document.getElementById("session-name").value.trim();
   const ffmpegPath = document.getElementById("ffmpeg-path").value.trim();
-  const hwndValue = parseHwnd(document.getElementById("target-hwnd").value);
+  const pickerValue = parseHwnd(windowPicker?.value ?? "");
+  const manualValue = parseHwnd(document.getElementById("target-hwnd").value);
+  const hwndValue = Number.isFinite(pickerValue) ? pickerValue : manualValue;
   const cursorDebug = document.getElementById("cursor-debug").checked;
 
   if (!sessionName || !datasetRoot || !ffmpegPath || !Number.isFinite(hwndValue)) {
@@ -122,6 +131,44 @@ async function startSession() {
   } catch (err) {
     log(`Start failed: ${err}`);
     setStatus("Idle", "Error starting session");
+  }
+}
+
+function renderWindowList(entries) {
+  const previous = windowPicker.value;
+  windowPicker.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a window";
+  windowPicker.appendChild(placeholder);
+
+  entries.forEach((entry) => {
+    const option = document.createElement("option");
+    option.value = String(entry.hwnd);
+    option.textContent = `[${formatHwnd(entry.hwnd)}] ${entry.title}`;
+    windowPicker.appendChild(option);
+  });
+
+  if (previous) {
+    windowPicker.value = previous;
+  }
+}
+
+async function refreshWindowList() {
+  if (!tauriInvoke) {
+    log("Tauri runtime not detected. Cannot list windows.");
+    return;
+  }
+  try {
+    const entries = await invokeCommand("list_windows");
+    if (!Array.isArray(entries)) {
+      throw new Error("Invalid window list response.");
+    }
+    renderWindowList(entries);
+    log(`Window list refreshed: ${entries.length} entries`);
+  } catch (err) {
+    log(`Window list failed: ${err}`);
   }
 }
 
@@ -216,6 +263,13 @@ startSessionBtn.addEventListener("click", startSession);
 joinSessionBtn.addEventListener("click", joinSession);
 startPackageBtn.addEventListener("click", startPackage);
 joinPackageBtn.addEventListener("click", joinPackage);
+refreshWindowsBtn.addEventListener("click", refreshWindowList);
+windowPicker.addEventListener("change", () => {
+  const selected = parseHwnd(windowPicker.value);
+  if (Number.isFinite(selected)) {
+    document.getElementById("target-hwnd").value = formatHwnd(selected);
+  }
+});
 
 setInterval(() => {
   pollSession();
@@ -225,4 +279,7 @@ setInterval(() => {
 setStatus("Idle", "Ready");
 if (!tauriInvoke) {
   log("Tauri runtime not detected. Open inside the Tauri app.");
+}
+if (tauriInvoke) {
+  refreshWindowList();
 }

@@ -44,6 +44,12 @@ pub enum GuiPackageStatusDto {
     Error { message: String },
 }
 
+#[derive(Debug, Serialize)]
+pub struct WindowEntryDto {
+    pub hwnd: isize,
+    pub title: String,
+}
+
 #[tauri::command]
 pub fn start_session(config: GuiSessionConfig, state: State<GuiState>) -> Result<u64, String> {
     let handle = GuiSessionRunner::start_realtime_async(config).map_err(|err| err.to_string())?;
@@ -110,6 +116,50 @@ pub fn join_package(id: u64, state: State<GuiState>) -> Result<String, String> {
         .join()
         .map(|path| path.to_string_lossy().to_string())
         .map_err(|err| err.to_string())
+}
+
+#[cfg(windows)]
+#[tauri::command]
+pub fn list_windows() -> Result<Vec<WindowEntryDto>, String> {
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextLengthW, GetWindowTextW, IsWindowVisible,
+    };
+
+    unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        if !IsWindowVisible(hwnd).as_bool() {
+            return BOOL(1);
+        }
+        let len = GetWindowTextLengthW(hwnd);
+        if len <= 0 {
+            return BOOL(1);
+        }
+        let mut buf = vec![0u16; (len + 1) as usize];
+        let copied = GetWindowTextW(hwnd, &mut buf);
+        if copied <= 0 {
+            return BOOL(1);
+        }
+        let title = String::from_utf16_lossy(&buf[..copied as usize]);
+        if title.trim().is_empty() {
+            return BOOL(1);
+        }
+        let entries = &mut *(lparam.0 as *mut Vec<WindowEntryDto>);
+        entries.push(WindowEntryDto { hwnd: hwnd.0, title });
+        BOOL(1)
+    }
+
+    let mut entries: Vec<WindowEntryDto> = Vec::new();
+    let entries_ptr = &mut entries as *mut Vec<WindowEntryDto>;
+    unsafe {
+        EnumWindows(Some(enum_proc), LPARAM(entries_ptr as isize));
+    }
+    Ok(entries)
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+pub fn list_windows() -> Result<Vec<WindowEntryDto>, String> {
+    Err("window listing is only supported on Windows".to_string())
 }
 
 fn map_status(status: GuiStatus) -> GuiStatusDto {

@@ -125,6 +125,21 @@ input[type="text"] {
   background: #fffaf2;
 }
 
+select {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: #fffaf2;
+  flex: 1;
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .actions {
   display: flex;
   gap: 12px;
