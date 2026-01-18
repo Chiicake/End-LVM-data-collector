@@ -1,3 +1,5 @@
+mod pipeline;
+
 fn main() {
-    println!("Hello, world!");
+    eprintln!("Collector CLI not implemented yet.");
 }

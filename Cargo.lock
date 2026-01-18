@@ -13,6 +13,11 @@ dependencies = [
 [[package]]
 name = "app"
 version = "0.1.0"
+dependencies = [
+ "aggregator",
+ "core",
+ "writer",
+]
 
 [[package]]
 name = "capture"
