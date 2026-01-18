@@ -1,29 +1,42 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::io;
 
 use collector_core::{InputEvent, InputEventKind, MouseButton, QpcTimestamp};
+
+mod rawinput;
 
 pub trait InputCollector {
     fn drain_events(&mut self, start: QpcTimestamp, end: QpcTimestamp) -> io::Result<Vec<InputEvent>>;
 }
 
-pub struct RawInputCollector;
+pub struct RawInputCollector {
+    inner: rawinput::RawInputCollectorImpl,
+    buffer: VecDeque<InputEvent>,
+}
 
 impl RawInputCollector {
     pub fn new() -> io::Result<Self> {
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "RawInput collector not implemented yet",
-        ))
+        let inner = rawinput::RawInputCollectorImpl::new()?;
+        Ok(Self {
+            inner,
+            buffer: VecDeque::new(),
+        })
     }
 }
 
 impl InputCollector for RawInputCollector {
-    fn drain_events(&mut self, _start: QpcTimestamp, _end: QpcTimestamp) -> io::Result<Vec<InputEvent>> {
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "RawInput collector not implemented yet",
-        ))
+    fn drain_events(&mut self, start: QpcTimestamp, end: QpcTimestamp) -> io::Result<Vec<InputEvent>> {
+        self.inner.drain_into(&mut self.buffer)?;
+        while matches!(self.buffer.front(), Some(ev) if ev.qpc_ts < start) {
+            self.buffer.pop_front();
+        }
+        let mut out = Vec::new();
+        while matches!(self.buffer.front(), Some(ev) if ev.qpc_ts < end) {
+            if let Some(ev) = self.buffer.pop_front() {
+                out.push(ev);
+            }
+        }
+        Ok(out)
     }
 }
 
