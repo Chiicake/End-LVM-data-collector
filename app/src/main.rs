@@ -1,5 +1,3 @@
-mod pipeline;
-
 use std::env;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
@@ -8,7 +6,7 @@ use std::path::{Path, PathBuf};
 use aggregator::CursorProvider;
 use capture::WgcCapture;
 use collector_core::{BuildInfo, InputEvent, Meta, Options, RECORD_HEIGHT, RECORD_WIDTH, STEP_MS};
-use pipeline::{ensure_dataset_root, PipelineConfig, SessionPipeline};
+use app::pipeline::{ensure_dataset_root, PipelineConfig, SessionPipeline};
 
 fn main() {
     if let Err(err) = run() {
@@ -44,7 +42,13 @@ fn run() -> io::Result<()> {
         };
         #[cfg(windows)]
         {
-            pipeline::run_realtime_with_hwnd(capture, input, hwnd, args.cursor_debug, pipeline)?
+            app::pipeline::run_realtime_with_hwnd(
+                capture,
+                input,
+                hwnd,
+                args.cursor_debug,
+                pipeline,
+            )?
         }
         #[cfg(not(windows))]
         {
