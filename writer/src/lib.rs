@@ -1,9 +1,104 @@
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use aggregator::AggregatedWindow;
 use collector_core::ActionSnapshot;
 use serde::Serialize;
+
+pub struct FfmpegConfig {
+    pub ffmpeg_path: PathBuf,
+    pub output_path: PathBuf,
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    pub crf: u32,
+    pub gop: u32,
+}
+
+pub struct FfmpegWriter {
+    child: Child,
+    stdin: ChildStdin,
+    frame_bytes: usize,
+}
+
+impl FfmpegWriter {
+    pub fn spawn(config: &FfmpegConfig) -> io::Result<Self> {
+        let mut cmd = Command::new(&config.ffmpeg_path);
+        cmd.arg("-y")
+            .arg("-f")
+            .arg("rawvideo")
+            .arg("-pix_fmt")
+            .arg("bgra")
+            .arg("-s")
+            .arg(format!("{}x{}", config.width, config.height))
+            .arg("-r")
+            .arg(config.fps.to_string())
+            .arg("-i")
+            .arg("-")
+            .arg("-c:v")
+            .arg("libx264")
+            .arg("-crf")
+            .arg(config.crf.to_string())
+            .arg("-g")
+            .arg(config.gop.to_string())
+            .arg("-pix_fmt")
+            .arg("yuv420p")
+            .arg(&config.output_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+
+        let mut child = cmd.spawn()?;
+        let stdin = child.stdin.take().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::Other, "ffmpeg stdin unavailable")
+        })?;
+        let frame_bytes = (config.width as usize)
+            .saturating_mul(config.height as usize)
+            .saturating_mul(4);
+        Ok(Self {
+            child,
+            stdin,
+            frame_bytes,
+        })
+    }
+
+    pub fn write_frame(&mut self, frame: &[u8]) -> io::Result<()> {
+        if frame.len() != self.frame_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "frame buffer size does not match expected BGRA size",
+            ));
+        }
+        self.stdin.write_all(frame)
+    }
+
+    pub fn finish(mut self) -> io::Result<()> {
+        self.stdin.flush()?;
+        drop(self.stdin);
+        let status = self.child.wait()?;
+        if !status.success() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("ffmpeg exited with {}", status),
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub fn default_ffmpeg_config(ffmpeg_path: &Path, output_path: &Path) -> FfmpegConfig {
+    FfmpegConfig {
+        ffmpeg_path: ffmpeg_path.to_path_buf(),
+        output_path: output_path.to_path_buf(),
+        width: 1280,
+        height: 720,
+        fps: 5,
+        crf: 20,
+        gop: 10,
+    }
+}
 
 pub struct JsonlWriter<W: Write> {
     writer: W,
