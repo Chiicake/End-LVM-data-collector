@@ -24,7 +24,8 @@ Build from source (Windows, need rust toolchain):
 ```bash
 git clone https://github.com/Chiicake/End-LVM-data-collector.git
 cd gui
-cargo run -p gui --features tauri
+cargo build -p gui --features tauri --release
+./target/release/collector-gui.exe
 ```
 
 ## Inputs

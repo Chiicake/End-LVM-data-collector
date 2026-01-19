@@ -3,7 +3,7 @@
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
     "devPath": "http://127.0.0.1:4173/",
-    "distDir": "./gui/dist"
+    "distDir": "dist"
   },
   "package": {
     "productName": "Collector GUI",
