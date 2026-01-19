@@ -17,7 +17,7 @@ use collector_core::{InputEventKind, MouseButton, QpcTimestamp};
 use crate::keyboard_key_name;
 
 #[cfg(windows)]
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
 #[cfg(windows)]
 use windows::Win32::System::Performance::QueryPerformanceCounter;
 #[cfg(windows)]
@@ -31,7 +31,8 @@ use windows::Win32::UI::Input::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrW,
     GetForegroundWindow, PostThreadMessageW, RegisterClassW, SetWindowLongPtrW,
-    TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HMENU, MSG,
+    TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, ERROR_CLASS_ALREADY_EXISTS,
+    GWLP_USERDATA, HMENU, MSG,
     RI_KEY_BREAK, RI_MOUSE_BUTTON_4_DOWN, RI_MOUSE_BUTTON_4_UP, RI_MOUSE_BUTTON_5_DOWN,
     RI_MOUSE_BUTTON_5_UP, RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP,
     RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP, RI_MOUSE_RIGHT_BUTTON_DOWN,
@@ -117,11 +118,14 @@ fn run_message_loop(
         };
         let atom = RegisterClassW(&wnd_class);
         if atom == 0 {
-            let _ = ready_tx.send(Err(io::Error::new(
-                io::ErrorKind::Other,
-                "RegisterClassW failed",
-            )));
-            return;
+            let last = GetLastError();
+            if last != ERROR_CLASS_ALREADY_EXISTS {
+                let _ = ready_tx.send(Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "RegisterClassW failed",
+                )));
+                return;
+            }
         }
 
         let hwnd = CreateWindowExW(

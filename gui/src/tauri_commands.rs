@@ -207,13 +207,14 @@ pub fn validate_ffmpeg(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn validate_session_name(dataset_root: String, session_name: String) -> Result<(), String> {
-    let root = Path::new(dataset_root.trim());
+#[allow(non_snake_case)]
+pub fn validate_session_name(datasetRoot: String, sessionName: String) -> Result<(), String> {
+    let root = Path::new(datasetRoot.trim());
     if !root.exists() {
         return Err("dataset root does not exist".to_string());
     }
     let sessions_dir = root.join("sessions");
-    let candidate = sessions_dir.join(session_name.trim());
+    let candidate = sessions_dir.join(sessionName.trim());
     if candidate.exists() {
         return Err("session directory already exists".to_string());
     }

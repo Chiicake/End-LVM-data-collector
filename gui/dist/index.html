@@ -39,7 +39,7 @@
                 <input
                   id="session-name"
                   type="text"
-                  placeholder="YYYY-MM-DD_HH-MM-SS"
+                  placeholder="YYYY-MM-DD_HH-MM-SS-mmm"
                   spellcheck="false"
                 />
                 <button id="refresh-session-name" class="ghost" type="button">
@@ -52,7 +52,7 @@
               <input
                 id="ffmpeg-path"
                 type="text"
-                value="./gui/ffmpeg"
+                value="./bin/ffmpeg"
                 spellcheck="false"
               />
             </div>
@@ -351,8 +351,8 @@
 
         try {
           await invokeCommand("validate_session_name", {
-            dataset_root: datasetRoot,
-            session_name: sessionName,
+            datasetRoot: datasetRoot,
+            sessionName: sessionName,
           });
         } catch (err) {
           log(`Session name invalid: ${err}`);
@@ -593,9 +593,11 @@
 
       function formatSessionTimestamp(date) {
         const pad = (value) => String(value).padStart(2, "0");
+        const padMs = (value) => String(value).padStart(3, "0");
         return (
           `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-          `_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`
+          `_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}` +
+          `-${padMs(date.getMilliseconds())}`
         );
       }
 

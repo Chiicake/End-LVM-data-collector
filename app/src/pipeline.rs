@@ -17,6 +17,8 @@ use writer::{SessionLayout, SessionWriter};
 #[cfg(windows)]
 use windows::Win32::Foundation::HWND;
 #[cfg(windows)]
+use windows::Win32::System::Performance::QueryPerformanceFrequency;
+#[cfg(windows)]
 #[cfg(windows)]
 use windows::Win32::UI::HiDpi::{
     GetDpiForWindow, SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
@@ -105,6 +107,7 @@ pub fn run_realtime<S: FrameSource, I: InputCollector>(
     cursor: &CursorProvider,
     mut pipeline: SessionPipeline,
 ) -> io::Result<SessionLayout> {
+    let step_ticks = qpc_step_ticks()?;
     loop {
         let frame = match capture.next_frame() {
             Ok(frame) => frame,
@@ -113,8 +116,20 @@ pub fn run_realtime<S: FrameSource, I: InputCollector>(
         };
 
         let window_end = frame.qpc_ts;
-        let window_start = window_end.saturating_sub(STEP_MS);
+        let window_start = window_end.saturating_sub(step_ticks);
         let events = input.drain_events(window_start, window_end)?;
+        if events.is_empty() {
+            eprintln!(
+                "[input] step={} events=0 window=({}-{})",
+                frame.step_index, window_start, window_end
+            );
+        } else {
+            eprintln!(
+                "[input] step={} events={}",
+                frame.step_index,
+                events.len()
+            );
+        }
         let is_foreground = true;
         let cursor_sample = cursor.clone();
 
@@ -219,6 +234,7 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought_with_stop<
     thought_provider: &mut T,
     should_stop: &mut P,
 ) -> io::Result<SessionLayout> {
+    let step_ticks = qpc_step_ticks()?;
     let mut cursor_test = CursorTestState::new();
     set_per_monitor_dpi_awareness();
     loop {
@@ -232,8 +248,20 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought_with_stop<
         };
 
         let window_end = frame.qpc_ts;
-        let window_start = window_end.saturating_sub(STEP_MS);
+        let window_start = window_end.saturating_sub(step_ticks);
         let events = input.drain_events(window_start, window_end)?;
+        if events.is_empty() {
+            eprintln!(
+                "[input] step={} events=0 window=({}-{})",
+                frame.step_index, window_start, window_end
+            );
+        } else {
+            eprintln!(
+                "[input] step={} events={}",
+                frame.step_index,
+                events.len()
+            );
+        }
         let (is_foreground, cursor, debug_info) = sample_foreground_and_cursor(
             target_hwnd,
             frame.src_width,
@@ -288,6 +316,26 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought_with_stop<
     }
 
     pipeline.finalize()
+}
+
+fn qpc_step_ticks() -> io::Result<u64> {
+    #[cfg(windows)]
+    {
+        unsafe {
+            let mut freq = 0i64;
+            QueryPerformanceFrequency(&mut freq)
+                .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{:?}", err)))?;
+            let ticks = (freq as u64)
+                .saturating_mul(STEP_MS)
+                .saturating_div(1000)
+                .max(1);
+            Ok(ticks)
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(STEP_MS.max(1))
+    }
 }
 
 #[cfg(windows)]

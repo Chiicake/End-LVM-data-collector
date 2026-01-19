@@ -9,31 +9,10 @@ strings into a session folder.
 ## Build & Run
 Requirements:
 - Rust toolchain (stable)
-- `ffmpeg` available on PATH or provide a full path
 
-CLI dry-run (replays events into a session):
+Build from source (Windows):
 ```bash
-cargo run -p app -- \
-  --session-name 2026-01-18_10-30-00_run001 \
-  --steps 30 \
-  --dataset-root D:/dataset \
-  --ffmpeg ffmpeg \
-  --frame-raw path/to/frame.bgra \
-  --events-jsonl path/to/events.jsonl \
-  --thoughts-jsonl path/to/thoughts.jsonl
-```
-
-CLI realtime (capture a window by HWND):
-```bash
-cargo run -p app -- \
-  --session-name 2026-01-18_10-30-00_run001 \
-  --dataset-root D:/dataset \
-  --ffmpeg ffmpeg \
-  --target-hwnd 0x00123456
-```
-
-GUI (Tauri, Windows):
-```bash
+git clone https://github.com/Chiicake/End-LVM-data-collector.git
 cd .\gui\dist
 python -m http.server 4173
 
@@ -46,11 +25,6 @@ cargo run -p gui --features tauri
 Realtime capture:
 - Target HWND (window handle) chosen by GUI or CLI.
 - Keyboard/mouse input via RawInput (foreground-only).
-
-Dry-run capture (CLI):
-- `events.jsonl` stream of `InputEvent` records.
-- Optional raw BGRA frame (1280x720) reused for each step.
-- Optional `thoughts.jsonl` (one line per step).
 
 ## Outputs
 Each session is written under `dataset_root/sessions/<session_name>/`:
