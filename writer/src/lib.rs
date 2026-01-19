@@ -3,6 +3,7 @@ use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
+use std::thread::sleep;
 
 use aggregator::AggregatedWindow;
 use collector_core::ActionSnapshot;
@@ -244,8 +245,23 @@ impl SessionWriter {
                 "final session directory already exists",
             ));
         }
-        fs::rename(&layout.temp_dir, &layout.root_dir)?;
-        Ok(layout)
+        let mut last_err = None;
+        for _ in 0..10 {
+            match fs::rename(&layout.temp_dir, &layout.root_dir) {
+                Ok(()) => return Ok(layout),
+                Err(err) if err.kind() == io::ErrorKind::PermissionDenied => {
+                    last_err = Some(err);
+                    sleep(Duration::from_millis(200));
+                }
+                Err(err) => return Err(err),
+            }
+        }
+        Err(last_err.unwrap_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "failed to finalize session directory",
+            )
+        }))
     }
 }
 

@@ -4,9 +4,8 @@ mod tauri_commands;
 
 use tauri_commands::{
     join_package, join_session, list_windows, poll_package, poll_session, set_thought,
-    start_package, start_session, GuiState,
+    start_package, start_session, stop_session, validate_ffmpeg, validate_session_name, GuiState,
 };
-
 fn main() {
     tauri::Builder::default()
         .manage(GuiState::default())
@@ -14,7 +13,10 @@ fn main() {
             start_session,
             poll_session,
             join_session,
+            stop_session,
             set_thought,
+            validate_ffmpeg,
+            validate_session_name,
             start_package,
             poll_package,
             join_package,

@@ -190,9 +190,41 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought<
     on_frame: &mut F,
     thought_provider: &mut T,
 ) -> io::Result<SessionLayout> {
+    run_realtime_with_hwnd_and_hook_and_thought_with_stop(
+        capture,
+        input,
+        target_hwnd,
+        debug_cursor,
+        pipeline,
+        on_frame,
+        thought_provider,
+        &mut || false,
+    )
+}
+
+#[cfg(windows)]
+pub fn run_realtime_with_hwnd_and_hook_and_thought_with_stop<
+    S: FrameSource,
+    I: InputCollector,
+    F: FnMut(&FrameRecord, bool, &CursorProvider),
+    T: FnMut() -> String,
+    P: FnMut() -> bool,
+>(
+    mut capture: S,
+    mut input: I,
+    target_hwnd: isize,
+    debug_cursor: bool,
+    mut pipeline: SessionPipeline,
+    on_frame: &mut F,
+    thought_provider: &mut T,
+    should_stop: &mut P,
+) -> io::Result<SessionLayout> {
     let mut cursor_test = CursorTestState::new();
     set_per_monitor_dpi_awareness();
     loop {
+        if should_stop() {
+            break;
+        }
         let frame = match capture.next_frame() {
             Ok(frame) => frame,
             Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => break,

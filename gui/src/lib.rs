@@ -2,6 +2,7 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -42,6 +43,7 @@ pub struct GuiSessionHandle {
     pub rx: mpsc::Receiver<GuiStatus>,
     join: JoinHandle<io::Result<PathBuf>>,
     thought: Arc<Mutex<String>>,
+    stop: Arc<AtomicBool>,
 }
 
 impl GuiSessionHandle {
@@ -62,6 +64,10 @@ impl GuiSessionHandle {
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "thought lock poisoned"))?;
         *guard = text;
         Ok(())
+    }
+
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::SeqCst);
     }
 }
 
@@ -137,6 +143,8 @@ impl GuiSessionRunner {
             let (tx, rx) = mpsc::channel();
             let thought_state = Arc::new(Mutex::new(String::new()));
             let thought_state_thread = Arc::clone(&thought_state);
+            let stop_flag = Arc::new(AtomicBool::new(false));
+            let stop_flag_thread = Arc::clone(&stop_flag);
             let handle = std::thread::spawn(move || {
                 let pipeline = SessionPipeline::create(PipelineConfig {
                     dataset_root: config.dataset_root.clone(),
@@ -152,7 +160,7 @@ impl GuiSessionRunner {
                 let input = RawInputCollector::new_with_target(Some(config.target_hwnd))?;
                 let tx_frame = tx.clone();
 
-                let result = app::pipeline::run_realtime_with_hwnd_and_hook_and_thought(
+                let result = app::pipeline::run_realtime_with_hwnd_and_hook_and_thought_with_stop(
                     capture,
                     input,
                     config.target_hwnd,
@@ -171,6 +179,7 @@ impl GuiSessionRunner {
                             .map(|value| value.clone())
                             .unwrap_or_default()
                     },
+                    &mut || stop_flag_thread.load(Ordering::SeqCst),
                 );
 
                 match result {
@@ -192,6 +201,7 @@ impl GuiSessionRunner {
                 rx,
                 join: handle,
                 thought: thought_state,
+                stop: stop_flag,
             })
         }
     }

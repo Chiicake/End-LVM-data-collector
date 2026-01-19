@@ -34,6 +34,11 @@ cargo run -p app -- \
 
 GUI (Tauri, Windows):
 ```bash
+cd .\gui\dist
+python -m http.server 4173
+
+# open a new terminal
+cd gui
 cargo run -p gui --features tauri
 ```
 

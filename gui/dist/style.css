@@ -63,9 +63,10 @@ h1 {
 }
 
 .status {
-  display: grid;
-  gap: 8px;
-  justify-items: end;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: nowrap;
 }
 
 .status-pill {
@@ -84,7 +85,7 @@ h1 {
 .grid {
   display: grid;
   gap: 24px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
 }
 
 .panel {
@@ -94,6 +95,29 @@ h1 {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   animation: floatIn 0.6s ease;
+}
+
+.session {
+  grid-column: 1 / 2;
+}
+
+.fields-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: row dense;
+}
+
+.fields-grid .field {
+  min-width: 0;
+}
+
+.fields-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.package.full-width {
+  grid-column: 1 / -1;
 }
 
 .panel h2 {
@@ -141,12 +165,20 @@ select {
   font-size: 14px;
   background: #fffaf2;
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
 }
+
+#window-picker {
+  flex: 0 0 63%;
+}
+
 
 .input-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .actions {
@@ -176,8 +208,20 @@ button.ghost {
   border: 1px solid var(--brand);
 }
 
+#refresh-windows {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+#refresh-session-name {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .log {
-  grid-column: 1 / -1;
+  grid-column: 2 / 3;
+  display: flex;
+  flex-direction: column;
 }
 
 .log-output {
@@ -185,7 +229,8 @@ button.ghost {
   color: #e6e2dc;
   border-radius: 12px;
   padding: 16px;
-  height: 220px;
+  height: 100%;
+  min-height: 220px;
   overflow-y: auto;
   font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 13px;
@@ -210,5 +255,19 @@ button.ghost {
 
   .status {
     justify-items: start;
+  }
+
+  .fields-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .session,
+  .log,
+  .package.full-width {
+    grid-column: 1 / -1;
   }
 }

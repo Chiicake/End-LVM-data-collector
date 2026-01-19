@@ -58,3 +58,4 @@ $RECYCLE.BIN/
 *.orig
 coverage/
 
+gui/data

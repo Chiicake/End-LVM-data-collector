@@ -11,91 +11,99 @@
       <header class="hero">
         <div>
           <p class="eyebrow">End-LVM Data Collector</p>
-          <h1>Session Control Console</h1>
-          <p class="lead">
-            Capture 5 FPS data streams, compile actions, and package sessions in
-            one place.
-          </p>
+          <h2>Session Capture Console</h2>
         </div>
         <div class="status">
           <div class="status-pill" id="status-pill">Idle</div>
           <div class="status-meta" id="status-meta">Ready</div>
+          <div class="status-meta" id="boot-status">booting...</div>
         </div>
       </header>
 
       <main class="grid">
-        <section class="panel">
+        <section class="panel session">
           <h2>Session Capture</h2>
-          <div class="field">
-            <label for="dataset-root">Dataset Root</label>
-            <input
-              id="dataset-root"
-              type="text"
-              value="D:/dataset"
-              spellcheck="false"
-            />
-          </div>
-          <div class="field">
-            <label for="session-name">Session Name</label>
-            <input
-              id="session-name"
-              type="text"
-              placeholder="2026-01-18_10-30-00_run001"
-              spellcheck="false"
-            />
-          </div>
-          <div class="field">
-            <label for="ffmpeg-path">FFmpeg Path</label>
-            <input
-              id="ffmpeg-path"
-              type="text"
-              value="ffmpeg"
-              spellcheck="false"
-            />
-          </div>
-          <div class="field">
-            <label for="window-picker">Window Picker</label>
-            <div class="input-row">
-              <select id="window-picker"></select>
-              <button id="refresh-windows" class="ghost" type="button">
-                Refresh
-              </button>
+          <div class="fields-grid">
+            <div class="field">
+              <label for="dataset-root">Dataset Root</label>
+              <input
+                id="dataset-root"
+                type="text"
+                value="./data"
+                spellcheck="false"
+              />
             </div>
-          </div>
-          <div class="field">
-            <label for="target-hwnd">Target HWND (hex)</label>
-            <input
-              id="target-hwnd"
-              type="text"
-              placeholder="0x12345678"
-              spellcheck="false"
-            />
-          </div>
-          <div class="field inline">
-            <label>
-              <input id="cursor-debug" type="checkbox" />
-              Cursor Debug
-            </label>
-          </div>
-          <div class="field">
-            <label for="thought-input">Current Thought</label>
-            <textarea
-              id="thought-input"
-              rows="3"
-              placeholder="Previous Step Summary / Current Situation Analysis / Next Move Planning"
-              spellcheck="false"
-            ></textarea>
+            <div class="field">
+              <label for="session-name">Session Name</label>
+              <div class="input-row">
+                <input
+                  id="session-name"
+                  type="text"
+                  placeholder="YYYY-MM-DD_HH-MM-SS"
+                  spellcheck="false"
+                />
+                <button id="refresh-session-name" class="ghost" type="button">
+                  Now
+                </button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="ffmpeg-path">FFmpeg Path</label>
+              <input
+                id="ffmpeg-path"
+                type="text"
+                value="./gui/ffmpeg"
+                spellcheck="false"
+              />
+            </div>
+            <div class="field">
+              <label for="window-picker">Window Picker</label>
+              <div class="input-row">
+                <select id="window-picker"></select>
+                <button id="refresh-windows" class="ghost" type="button">
+                  Refresh
+                </button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="target-hwnd">Target HWND (hex)</label>
+              <input
+                id="target-hwnd"
+                type="text"
+                placeholder="0x12345678"
+                spellcheck="false"
+              />
+            </div>
+            <div class="field inline">
+              <label>
+                <input id="cursor-debug" type="checkbox" />
+                Cursor Debug
+              </label>
+            </div>
+            <div class="field wide">
+              <label for="thought-input">Current Thought</label>
+              <textarea
+                id="thought-input"
+                rows="3"
+                placeholder="Previous Step Summary / Current Situation Analysis / Next Move Planning"
+                spellcheck="false"
+              ></textarea>
+            </div>
           </div>
           <div class="actions">
             <button id="start-session" class="primary">Start Session</button>
-            <button id="join-session" class="ghost">Join</button>
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel log">
+          <h2>Live Log</h2>
+          <div id="log-output" class="log-output"></div>
+        </section>
+
+        <section class="panel package full-width">
           <h2>Package Sessions</h2>
           <div class="field">
-            <label for="package-sessions">Session Names (comma)</label>
+            <label for="package-sessions">Session Names</label>
             <input
               id="package-sessions"
               type="text"
@@ -108,7 +116,7 @@
             <input
               id="package-output"
               type="text"
-              placeholder="D:/dataset/sessions.zip"
+              value="./data/sessions.zip"
               spellcheck="false"
             />
           </div>
@@ -123,13 +131,492 @@
             <button id="join-package" class="ghost">Join</button>
           </div>
         </section>
-
-        <section class="panel log">
-          <h2>Live Log</h2>
-          <div id="log-output" class="log-output"></div>
-        </section>
       </main>
     </div>
-    <script src="app.js"></script>
+    <script>
+      const bootStatus = document.getElementById("boot-status");
+      if (bootStatus) {
+        bootStatus.textContent = "inline script ok";
+      }
+      setTimeout(() => {
+        if (!window.__APP_JS_LOADED && bootStatus) {
+          bootStatus.textContent = "inline app.js not loaded";
+        }
+      }, 1000);
+    </script>
+    <script>
+      window.__APP_JS_LOADED = true;
+
+      let tauriInvoke =
+        window.__TAURI__?.invoke ??
+        window.__TAURI__?.tauri?.invoke ??
+        window.__TAURI__?.core?.invoke;
+
+      function createIpcInvoke() {
+        if (!window.__TAURI_IPC__) {
+          return null;
+        }
+        return function (cmd, args = {}) {
+          return new Promise((resolve, reject) => {
+            const id = window.crypto.getRandomValues(new Uint32Array(1))[0];
+            const errId = window.crypto.getRandomValues(new Uint32Array(1))[0];
+            Object.defineProperty(window, `_${id}`, {
+              value: (result) => {
+                resolve(result);
+                Reflect.deleteProperty(window, `_${id}`);
+                Reflect.deleteProperty(window, `_${errId}`);
+              },
+              writable: false,
+              configurable: true,
+            });
+            Object.defineProperty(window, `_${errId}`, {
+              value: (err) => {
+                reject(err);
+                Reflect.deleteProperty(window, `_${id}`);
+                Reflect.deleteProperty(window, `_${errId}`);
+              },
+              writable: false,
+              configurable: true,
+            });
+            let payload = args;
+            if (typeof cmd === "string") {
+              payload = { ...args, cmd };
+            } else if (typeof cmd === "object") {
+              payload = cmd;
+            } else {
+              reject(new Error("Invalid invoke command."));
+              return;
+            }
+            window.__TAURI_IPC__({
+              ...payload,
+              callback: id,
+              error: errId,
+            });
+          });
+        };
+      }
+
+      function resolveTauriInvoke() {
+        tauriInvoke =
+          window.__TAURI__?.invoke ??
+          window.__TAURI__?.tauri?.invoke ??
+          window.__TAURI__?.core?.invoke ??
+          tauriInvoke;
+        if (!tauriInvoke) {
+          const ipcInvoke = createIpcInvoke();
+          if (ipcInvoke) {
+            tauriInvoke = ipcInvoke;
+          }
+        }
+        return tauriInvoke;
+      }
+
+      async function waitForTauriInvoke(timeoutMs = 2000) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+          if (resolveTauriInvoke()) {
+            return tauriInvoke;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return null;
+      }
+
+      const statusPill = document.getElementById("status-pill");
+      const statusMeta = document.getElementById("status-meta");
+      const logOutput = document.getElementById("log-output");
+      const windowPicker = document.getElementById("window-picker");
+      const refreshWindowsBtn = document.getElementById("refresh-windows");
+      const refreshSessionNameBtn = document.getElementById("refresh-session-name");
+      const thoughtInput = document.getElementById("thought-input");
+
+      const startSessionBtn = document.getElementById("start-session");
+      const startPackageBtn = document.getElementById("start-package");
+      const joinPackageBtn = document.getElementById("join-package");
+
+      let sessionId = null;
+      let packageId = null;
+      let thoughtTimer = null;
+      const THOUGHT_DEBOUNCE_MS = 250;
+
+      function log(line) {
+        const entry = document.createElement("div");
+        entry.textContent = line;
+        logOutput.appendChild(entry);
+        logOutput.scrollTop = logOutput.scrollHeight;
+      }
+
+      if (bootStatus) {
+        bootStatus.textContent = "inline app.js loaded";
+      }
+
+      function setStatus(label, meta) {
+        statusPill.textContent = label;
+        statusMeta.textContent = meta;
+      }
+
+      function buildOptions(sessionName) {
+        return {
+          schema_version: 1,
+          capture: {
+            api: "WindowsGraphicsCapture",
+            fps: 5,
+            record_resolution: [1280, 720],
+            resize_mode: "letterbox",
+            color_format: "BGRA8",
+            include_cursor_in_video: false,
+            target: {
+              method: "gui",
+              window_title: null,
+              process_name: null,
+            },
+          },
+          input: {
+            keyboard: "RawInput",
+            mouse: "RawInput",
+            mouse_mode: "relative_plus_pointer_mixed",
+            dpi_awareness: "PerMonitorV2",
+            foreground_only: true,
+          },
+          timing: {
+            clock: "QPC",
+            step_ms: 200,
+            fps: 5,
+          },
+          auto_events: {
+            enabled: false,
+            roi_config: "rois_config_1280x720.json",
+            stability_frames: 3,
+          },
+        };
+      }
+
+      function buildMeta(sessionName) {
+        return {
+          session_id: sessionName,
+          game: "",
+          os: "unknown",
+          cpu: "unknown",
+          gpu: "unknown",
+          qpc_frequency_hz: 0,
+          build: {
+            collector_version: "0.1.0",
+            git_commit: "unknown",
+          },
+          notes: "",
+        };
+      }
+
+      function parseHwnd(value) {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        if (trimmed.startsWith("0x")) {
+          return parseInt(trimmed, 16);
+        }
+        return parseInt(trimmed, 10);
+      }
+
+      function formatHwnd(value) {
+        if (!Number.isFinite(value)) return "";
+        return `0x${value.toString(16)}`;
+      }
+
+      async function invokeCommand(command, payload) {
+        if (!resolveTauriInvoke()) {
+          throw new Error("Tauri runtime not detected.");
+        }
+        return tauriInvoke(command, payload);
+      }
+
+      async function startSession() {
+        const datasetRoot = document.getElementById("dataset-root").value.trim();
+        const sessionName = document.getElementById("session-name").value.trim();
+        const ffmpegPath = document.getElementById("ffmpeg-path").value.trim();
+        const pickerValue = parseHwnd(windowPicker?.value ?? "");
+        const manualValue = parseHwnd(document.getElementById("target-hwnd").value);
+        const hwndValue = Number.isFinite(pickerValue) ? pickerValue : manualValue;
+        const cursorDebug = document.getElementById("cursor-debug").checked;
+
+        if (!Number.isFinite(hwndValue)) {
+          log("Missing required session fields: target_hwnd (select a window).");
+          return;
+        }
+
+        try {
+          await invokeCommand("validate_ffmpeg", { path: ffmpegPath });
+        } catch (err) {
+          log(`Invalid ffmpeg path: ${err}`);
+          return;
+        }
+
+        try {
+          await invokeCommand("validate_session_name", {
+            dataset_root: datasetRoot,
+            session_name: sessionName,
+          });
+        } catch (err) {
+          log(`Session name invalid: ${err}`);
+          return;
+        }
+
+        if (!sessionName || !datasetRoot || !ffmpegPath || !Number.isFinite(hwndValue)) {
+          const missing = [];
+          if (!datasetRoot) missing.push("dataset_root");
+          if (!sessionName) missing.push("session_name");
+          if (!ffmpegPath) missing.push("ffmpeg_path");
+          if (!Number.isFinite(hwndValue)) missing.push("target_hwnd");
+          log(`Missing required session fields: ${missing.join(", ")}`);
+          return;
+        }
+
+        setStatus("Starting", "Launching session...");
+        const config = {
+          dataset_root: datasetRoot,
+          session_name: sessionName,
+          ffmpeg_path: ffmpegPath,
+          target_hwnd: hwndValue,
+          options: buildOptions(sessionName),
+          meta: buildMeta(sessionName),
+          cursor_debug: cursorDebug,
+        };
+
+        try {
+          sessionId = await invokeCommand("start_session", { config });
+          log(`Session started: id=${sessionId}`);
+          setStatus("Recording", "Session running");
+          startSessionBtn.textContent = "Stop Session";
+          sendThoughtUpdate(true);
+        } catch (err) {
+          log(`Start failed: ${err}`);
+          setStatus("Idle", "Error starting session");
+        }
+      }
+
+      function renderWindowList(entries) {
+        const previous = windowPicker.value;
+        windowPicker.innerHTML = "";
+
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Select a window";
+        windowPicker.appendChild(placeholder);
+
+        entries.forEach((entry) => {
+          const option = document.createElement("option");
+          option.value = String(entry.hwnd);
+          option.textContent = `[${formatHwnd(entry.hwnd)}] ${entry.title}`;
+          windowPicker.appendChild(option);
+        });
+
+        if (previous) {
+          windowPicker.value = previous;
+        }
+      }
+
+      async function refreshWindowList() {
+        if (!resolveTauriInvoke()) {
+          log("Tauri runtime not detected. Cannot list windows.");
+          return;
+        }
+        try {
+          const entries = await invokeCommand("list_windows");
+          if (!Array.isArray(entries)) {
+            throw new Error("Invalid window list response.");
+          }
+          renderWindowList(entries);
+          log(`Window list refreshed: ${entries.length} entries`);
+        } catch (err) {
+          log(`Window list failed: ${err}`);
+        }
+      }
+
+      async function pollSession() {
+        if (sessionId == null) return;
+        const updates = await invokeCommand("poll_session", { id: sessionId });
+        updates.forEach((entry) => {
+          if (entry.type === "frame") {
+            statusMeta.textContent = `Step ${entry.step_index} | fg=${entry.is_foreground}`;
+          } else if (entry.type === "finished") {
+            log(`Session finished: ${entry.output_dir}`);
+            setStatus("Idle", "Ready");
+          } else if (entry.type === "error") {
+            log(`Session error: ${entry.message}`);
+            setStatus("Idle", "Error");
+          } else if (entry.type === "started") {
+            log(`Session started: ${entry.session_name}`);
+          }
+        });
+      }
+
+      async function joinSession() {
+        if (sessionId == null) return;
+        try {
+          const outputDir = await invokeCommand("join_session", { id: sessionId });
+          log(`Session join completed: ${outputDir}`);
+          setStatus("Idle", "Ready");
+          sessionId = null;
+          startSessionBtn.textContent = "Start Session";
+        } catch (err) {
+          log(`Join failed: ${err}`);
+        }
+      }
+
+      async function stopSession() {
+        if (sessionId == null) return;
+        setStatus("Stopping", "Stopping session...");
+        try {
+          await invokeCommand("stop_session", { id: sessionId });
+        } catch (err) {
+          log(`Stop failed: ${err}`);
+        }
+        try {
+          const outputDir = await invokeCommand("join_session", { id: sessionId });
+          log(`Session join completed: ${outputDir}`);
+        } catch (err) {
+          const message = String(err || "");
+          if (!message.includes("拒绝访问")) {
+            log(`Join failed: ${err}`);
+          }
+        }
+        setStatus("Idle", "Ready");
+        sessionId = null;
+        startSessionBtn.textContent = "Start Session";
+      }
+
+      async function startPackage() {
+        const datasetRoot = document.getElementById("dataset-root").value.trim();
+        const outputZip = document.getElementById("package-output").value.trim();
+        const rawSessions = document.getElementById("package-sessions").value.trim();
+        const deleteAfter = document.getElementById("package-delete").checked;
+        const sessionNames = rawSessions
+          ? rawSessions.split(",").map((name) => name.trim()).filter(Boolean)
+          : [];
+
+        if (!datasetRoot || !outputZip) {
+          log("Missing packaging fields.");
+          return;
+        }
+
+        const request = {
+          dataset_root: datasetRoot,
+          session_names: sessionNames,
+          output_zip: outputZip,
+          delete_after: deleteAfter,
+        };
+
+        try {
+          packageId = await invokeCommand("start_package", { request });
+          log(`Packaging started: id=${packageId}`);
+          setStatus("Packaging", "Compressing sessions...");
+        } catch (err) {
+          log(`Package failed: ${err}`);
+          setStatus("Idle", "Error");
+        }
+      }
+
+      async function pollPackage() {
+        if (packageId == null) return;
+        const updates = await invokeCommand("poll_package", { id: packageId });
+        updates.forEach((entry) => {
+          if (entry.type === "file") {
+            log(`Packed ${entry.index}/${entry.total_files}: ${entry.path}`);
+          } else if (entry.type === "finished") {
+            log(`Packaging complete: ${entry.output_zip}`);
+            setStatus("Idle", "Ready");
+          } else if (entry.type === "error") {
+            log(`Packaging error: ${entry.message}`);
+            setStatus("Idle", "Error");
+          }
+        });
+      }
+
+      async function joinPackage() {
+        if (packageId == null) return;
+        try {
+          const outputZip = await invokeCommand("join_package", { id: packageId });
+          log(`Packaging join completed: ${outputZip}`);
+          setStatus("Idle", "Ready");
+        } catch (err) {
+          log(`Join failed: ${err}`);
+        }
+      }
+
+      function sendThoughtUpdate(force) {
+        if (sessionId == null || !resolveTauriInvoke()) return;
+        const text = thoughtInput.value;
+        invokeCommand("set_thought", { id: sessionId, text }).catch((err) => {
+          log(`Thought update failed: ${err}`);
+        });
+      }
+
+      function scheduleThoughtUpdate() {
+        if (thoughtTimer) {
+          clearTimeout(thoughtTimer);
+        }
+        thoughtTimer = setTimeout(() => {
+          sendThoughtUpdate(false);
+        }, THOUGHT_DEBOUNCE_MS);
+      }
+
+      startSessionBtn.addEventListener("click", () => {
+        if (sessionId == null) {
+          startSession();
+        } else {
+          stopSession();
+        }
+      });
+      startPackageBtn.addEventListener("click", startPackage);
+      joinPackageBtn.addEventListener("click", joinPackage);
+      refreshWindowsBtn.addEventListener("click", refreshWindowList);
+      thoughtInput.addEventListener("input", scheduleThoughtUpdate);
+      windowPicker.addEventListener("change", () => {
+        const selected = parseHwnd(windowPicker.value);
+        if (Number.isFinite(selected)) {
+          document.getElementById("target-hwnd").value = formatHwnd(selected);
+        }
+      });
+
+      setInterval(() => {
+        pollSession();
+        pollPackage();
+      }, 500);
+
+      setStatus("Idle", "Ready");
+      waitForTauriInvoke().then((invoke) => {
+        if (!invoke) {
+          log("Tauri runtime not detected. Open inside the Tauri app.");
+          return;
+        }
+        log("Tauri runtime detected.");
+        refreshWindowList();
+      });
+
+      function formatSessionTimestamp(date) {
+        const pad = (value) => String(value).padStart(2, "0");
+        return (
+          `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+          `_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`
+        );
+      }
+
+      function initializeSessionName() {
+        const input = document.getElementById("session-name");
+        if (!input) return;
+        if (!input.value.trim()) {
+          input.value = formatSessionTimestamp(new Date());
+        }
+      }
+
+      initializeSessionName();
+
+      if (refreshSessionNameBtn) {
+        refreshSessionNameBtn.addEventListener("click", () => {
+          const input = document.getElementById("session-name");
+          if (input) {
+            input.value = formatSessionTimestamp(new Date());
+          }
+        });
+      }
+    </script>
   </body>
 </html>

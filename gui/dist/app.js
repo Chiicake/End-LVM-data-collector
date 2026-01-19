@@ -1,4 +1,29 @@
-const tauriInvoke = window.__TAURI__?.tauri?.invoke;
+window.__APP_JS_LOADED = true;
+
+let tauriInvoke =
+  window.__TAURI__?.invoke ??
+  window.__TAURI__?.tauri?.invoke ??
+  window.__TAURI__?.core?.invoke;
+
+function resolveTauriInvoke() {
+  tauriInvoke =
+    window.__TAURI__?.invoke ??
+    window.__TAURI__?.tauri?.invoke ??
+    window.__TAURI__?.core?.invoke ??
+    tauriInvoke;
+  return tauriInvoke;
+}
+
+async function waitForTauriInvoke(timeoutMs = 2000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (resolveTauriInvoke()) {
+      return tauriInvoke;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return null;
+}
 
 const statusPill = document.getElementById("status-pill");
 const statusMeta = document.getElementById("status-meta");
@@ -22,6 +47,11 @@ function log(line) {
   entry.textContent = line;
   logOutput.appendChild(entry);
   logOutput.scrollTop = logOutput.scrollHeight;
+}
+
+const bootStatus = document.getElementById("boot-status");
+if (bootStatus) {
+  bootStatus.textContent = "app.js loaded";
 }
 
 function setStatus(label, meta) {
@@ -96,7 +126,7 @@ function formatHwnd(value) {
 }
 
 async function invokeCommand(command, payload) {
-  if (!tauriInvoke) {
+  if (!resolveTauriInvoke()) {
     throw new Error("Tauri runtime not detected.");
   }
   return tauriInvoke(command, payload);
@@ -160,7 +190,7 @@ function renderWindowList(entries) {
 }
 
 async function refreshWindowList() {
-  if (!tauriInvoke) {
+  if (!resolveTauriInvoke()) {
     log("Tauri runtime not detected. Cannot list windows.");
     return;
   }
@@ -265,7 +295,7 @@ async function joinPackage() {
 }
 
 function sendThoughtUpdate(force) {
-  if (sessionId == null || !tauriInvoke) return;
+  if (sessionId == null || !resolveTauriInvoke()) return;
   const text = thoughtInput.value;
   invokeCommand("set_thought", { id: sessionId, text }).catch((err) => {
     log(`Thought update failed: ${err}`);
@@ -300,9 +330,11 @@ setInterval(() => {
 }, 500);
 
 setStatus("Idle", "Ready");
-if (!tauriInvoke) {
-  log("Tauri runtime not detected. Open inside the Tauri app.");
-}
-if (tauriInvoke) {
+waitForTauriInvoke().then((invoke) => {
+  if (!invoke) {
+    log("Tauri runtime not detected. Open inside the Tauri app.");
+    return;
+  }
+  log("Tauri runtime detected.");
   refreshWindowList();
-}
+});

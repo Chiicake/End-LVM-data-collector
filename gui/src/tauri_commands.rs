@@ -4,6 +4,8 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::State;
+use std::path::Path;
+use std::process::Command;
 
 use gui::{
     start_package_async, GuiPackageHandle, GuiPackageStatus, GuiSessionConfig, GuiSessionHandle,
@@ -85,6 +87,14 @@ pub fn join_session(id: u64, state: State<GuiState>) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn stop_session(id: u64, state: State<GuiState>) -> Result<(), String> {
+    let sessions = state.sessions.lock().map_err(|_| "lock poisoned")?;
+    let handle = sessions.get(&id).ok_or_else(|| "unknown session id".to_string())?;
+    handle.stop();
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_thought(id: u64, text: String, state: State<GuiState>) -> Result<(), String> {
     let sessions = state.sessions.lock().map_err(|_| "lock poisoned")?;
     let handle = sessions.get(&id).ok_or_else(|| "unknown session id".to_string())?;
@@ -130,25 +140,31 @@ pub fn join_package(id: u64, state: State<GuiState>) -> Result<String, String> {
 pub fn list_windows() -> Result<Vec<WindowEntryDto>, String> {
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowTextLengthW, GetWindowTextW, IsWindowVisible,
+        EnumWindows, GetClassNameW, GetWindowTextW, IsWindowVisible,
     };
 
     unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
         if !IsWindowVisible(hwnd).as_bool() {
             return BOOL(1);
         }
-        let len = GetWindowTextLengthW(hwnd);
-        if len <= 0 {
-            return BOOL(1);
-        }
-        let mut buf = vec![0u16; (len + 1) as usize];
+        let mut buf = vec![0u16; 512];
         let copied = GetWindowTextW(hwnd, &mut buf);
-        if copied <= 0 {
-            return BOOL(1);
-        }
-        let title = String::from_utf16_lossy(&buf[..copied as usize]);
+        let mut title = if copied > 0 {
+            String::from_utf16_lossy(&buf[..copied as usize])
+        } else {
+            String::new()
+        };
         if title.trim().is_empty() {
-            return BOOL(1);
+            let mut class_buf = vec![0u16; 256];
+            let class_len = GetClassNameW(hwnd, &mut class_buf);
+            if class_len > 0 {
+                title = format!(
+                    "[class] {}",
+                    String::from_utf16_lossy(&class_buf[..class_len as usize])
+                );
+            } else {
+                title = "[untitled window]".to_string();
+            }
         }
         let entries = &mut *(lparam.0 as *mut Vec<WindowEntryDto>);
         entries.push(WindowEntryDto { hwnd: hwnd.0, title });
@@ -167,6 +183,41 @@ pub fn list_windows() -> Result<Vec<WindowEntryDto>, String> {
 #[tauri::command]
 pub fn list_windows() -> Result<Vec<WindowEntryDto>, String> {
     Err("window listing is only supported on Windows".to_string())
+}
+
+#[tauri::command]
+pub fn validate_ffmpeg(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("ffmpeg path is empty".to_string());
+    }
+    let path_obj = Path::new(trimmed);
+    if path_obj.is_file() {
+        return Ok(());
+    }
+    let output = Command::new(trimmed)
+        .arg("-version")
+        .output()
+        .map_err(|err| format!("failed to run ffmpeg: {}", err))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err("ffmpeg returned an error".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn validate_session_name(dataset_root: String, session_name: String) -> Result<(), String> {
+    let root = Path::new(dataset_root.trim());
+    if !root.exists() {
+        return Err("dataset root does not exist".to_string());
+    }
+    let sessions_dir = root.join("sessions");
+    let candidate = sessions_dir.join(session_name.trim());
+    if candidate.exists() {
+        return Err("session directory already exists".to_string());
+    }
+    Ok(())
 }
 
 fn map_status(status: GuiStatus) -> GuiStatusDto {
