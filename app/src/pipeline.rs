@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use aggregator::{aggregate_window_with_compiled, AggregatorState, CursorProvider};
 use capture::FrameSource;
-use collector_core::{InputEvent, Meta, Options, QpcTimestamp, StepIndex, STEP_MS};
+use collector_core::{InputEvent, Meta, Options, QpcTimestamp, StepIndex};
 
 #[cfg(windows)]
 use collector_core::FrameRecord;
@@ -39,6 +39,9 @@ pub struct PipelineConfig {
     pub dataset_root: PathBuf,
     pub session_name: String,
     pub ffmpeg_path: PathBuf,
+    pub record_width: u32,
+    pub record_height: u32,
+    pub fps: u32,
 }
 
 pub struct SessionPipeline {
@@ -52,6 +55,9 @@ impl SessionPipeline {
             &config.dataset_root,
             &config.session_name,
             &config.ffmpeg_path,
+            config.record_width,
+            config.record_height,
+            config.fps,
             DEFAULT_FLUSH_LINES,
             Duration::from_secs(DEFAULT_FLUSH_SECS),
         )?;
@@ -106,8 +112,9 @@ pub fn run_realtime<S: FrameSource, I: InputCollector>(
     mut input: I,
     cursor: &CursorProvider,
     mut pipeline: SessionPipeline,
+    step_ms: u64,
 ) -> io::Result<SessionLayout> {
-    let step_ticks = qpc_step_ticks()?;
+    let step_ticks = qpc_step_ticks(step_ms)?;
     loop {
         let frame = match capture.next_frame() {
             Ok(frame) => frame,
@@ -155,6 +162,7 @@ pub fn run_realtime_with_hwnd<S: FrameSource, I: InputCollector>(
     target_hwnd: isize,
     debug_cursor: bool,
     pipeline: SessionPipeline,
+    step_ms: u64,
 ) -> io::Result<SessionLayout> {
     run_realtime_with_hwnd_and_hook(
         capture,
@@ -163,6 +171,7 @@ pub fn run_realtime_with_hwnd<S: FrameSource, I: InputCollector>(
         debug_cursor,
         pipeline,
         |_frame, _is_foreground, _cursor| {},
+        step_ms,
     )
 }
 
@@ -178,6 +187,7 @@ pub fn run_realtime_with_hwnd_and_hook<
     debug_cursor: bool,
     pipeline: SessionPipeline,
     mut on_frame: F,
+    step_ms: u64,
 ) -> io::Result<SessionLayout> {
     run_realtime_with_hwnd_and_hook_and_thought(
         capture,
@@ -187,6 +197,7 @@ pub fn run_realtime_with_hwnd_and_hook<
         pipeline,
         &mut on_frame,
         &mut || String::new(),
+        step_ms,
     )
 }
 
@@ -204,6 +215,7 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought<
     mut pipeline: SessionPipeline,
     on_frame: &mut F,
     thought_provider: &mut T,
+    step_ms: u64,
 ) -> io::Result<SessionLayout> {
     run_realtime_with_hwnd_and_hook_and_thought_with_stop(
         capture,
@@ -214,6 +226,7 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought<
         on_frame,
         thought_provider,
         &mut || false,
+        step_ms,
     )
 }
 
@@ -233,8 +246,9 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought_with_stop<
     on_frame: &mut F,
     thought_provider: &mut T,
     should_stop: &mut P,
+    step_ms: u64,
 ) -> io::Result<SessionLayout> {
-    let step_ticks = qpc_step_ticks()?;
+    let step_ticks = qpc_step_ticks(step_ms)?;
     let mut cursor_test = CursorTestState::new();
     set_per_monitor_dpi_awareness();
     loop {
@@ -318,7 +332,7 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought_with_stop<
     pipeline.finalize()
 }
 
-fn qpc_step_ticks() -> io::Result<u64> {
+fn qpc_step_ticks(step_ms: u64) -> io::Result<u64> {
     #[cfg(windows)]
     {
         unsafe {
@@ -326,7 +340,7 @@ fn qpc_step_ticks() -> io::Result<u64> {
             QueryPerformanceFrequency(&mut freq)
                 .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("{:?}", err)))?;
             let ticks = (freq as u64)
-                .saturating_mul(STEP_MS)
+                .saturating_mul(step_ms)
                 .saturating_div(1000)
                 .max(1);
             Ok(ticks)
@@ -334,7 +348,7 @@ fn qpc_step_ticks() -> io::Result<u64> {
     }
     #[cfg(not(windows))]
     {
-        Ok(STEP_MS.max(1))
+        Ok(step_ms.max(1))
     }
 }
 

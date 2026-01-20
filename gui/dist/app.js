@@ -69,13 +69,14 @@ function resolveResolution(value) {
   }
 }
 
-function buildOptions(sessionName, resolutionValue) {
+function buildOptions(sessionName, resolutionValue, fps) {
   const resolution = resolveResolution(resolutionValue);
+  const stepMs = Math.max(1, Math.floor(1000 / fps));
   return {
     schema_version: 1,
     capture: {
       api: "WindowsGraphicsCapture",
-      fps: 5,
+      fps: fps,
       record_resolution: resolution.size,
       resize_mode: "letterbox",
       color_format: "BGRA8",
@@ -95,8 +96,8 @@ function buildOptions(sessionName, resolutionValue) {
     },
     timing: {
       clock: "QPC",
-      step_ms: 200,
-      fps: 5,
+      step_ms: stepMs,
+      fps: fps,
     },
     auto_events: {
       enabled: false,
@@ -106,7 +107,7 @@ function buildOptions(sessionName, resolutionValue) {
   };
 }
 
-function buildMeta(sessionName) {
+function buildMeta(sessionName, fps) {
   return {
     session_id: sessionName,
     game: "",
@@ -114,6 +115,7 @@ function buildMeta(sessionName) {
     cpu: "unknown",
     gpu: "unknown",
     qpc_frequency_hz: 0,
+    record_fps: fps,
     build: {
       collector_version: "0.1.0",
       git_commit: "unknown",
@@ -152,6 +154,7 @@ async function startSession() {
   const hwndValue = Number.isFinite(pickerValue) ? pickerValue : manualValue;
   const cursorDebug = document.getElementById("cursor-debug").checked;
   const resolutionValue = document.getElementById("record-resolution").value;
+  const fpsValue = parseInt(document.getElementById("record-fps").value, 10) || 2;
 
   if (!sessionName || !datasetRoot || !ffmpegPath || !Number.isFinite(hwndValue)) {
     log("Missing required session fields.");
@@ -164,8 +167,8 @@ async function startSession() {
     session_name: sessionName,
     ffmpeg_path: ffmpegPath,
     target_hwnd: hwndValue,
-    options: buildOptions(sessionName, resolutionValue),
-    meta: buildMeta(sessionName),
+    options: buildOptions(sessionName, resolutionValue, fpsValue),
+    meta: buildMeta(sessionName, fpsValue),
     cursor_debug: cursorDebug,
   };
 

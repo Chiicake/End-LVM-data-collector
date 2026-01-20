@@ -121,13 +121,19 @@ impl FfmpegWriter {
     }
 }
 
-pub fn default_ffmpeg_config(ffmpeg_path: &Path, output_path: &Path) -> FfmpegConfig {
+pub fn default_ffmpeg_config(
+    ffmpeg_path: &Path,
+    output_path: &Path,
+    width: u32,
+    height: u32,
+    fps: u32,
+) -> FfmpegConfig {
     FfmpegConfig {
         ffmpeg_path: ffmpeg_path.to_path_buf(),
         output_path: output_path.to_path_buf(),
-        width: 1280,
-        height: 720,
-        fps: 5,
+        width,
+        height,
+        fps,
         crf: 20,
         gop: 10,
     }
@@ -147,6 +153,9 @@ impl SessionWriter {
         dataset_root: &Path,
         session_name: &str,
         ffmpeg_path: &Path,
+        width: u32,
+        height: u32,
+        fps: u32,
         flush_every_lines: u64,
         flush_every: Duration,
     ) -> io::Result<Self> {
@@ -180,7 +189,7 @@ impl SessionWriter {
             flush_every,
         );
 
-        let ffmpeg_config = default_ffmpeg_config(ffmpeg_path, &layout.video_path);
+        let ffmpeg_config = default_ffmpeg_config(ffmpeg_path, &layout.video_path, width, height, fps);
         let ffmpeg = FfmpegWriter::spawn(&ffmpeg_config)?;
 
         Ok(Self {

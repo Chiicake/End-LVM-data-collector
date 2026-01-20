@@ -4,8 +4,9 @@
 
 ## What It Does
 This project records synchronized gameplay video and input data for training
-and evaluation. It captures a target window at 5 FPS, aggregates RawInput
-events into 200ms steps, and writes actions strings into a file.
+and evaluation. It captures a target window at the selected FPS (2/3/5),
+aggregates RawInput events into matching step windows, and writes action strings
+into a file.
 
 ## Run
 Requirements: Windows, WGC & Webview2 Runtime
@@ -42,9 +43,9 @@ Realtime capture:
 
 ## Outputs
 Each session is written under `dataset_root/sessions/<session_name>/`:
-- `video.mp4` (5 FPS, 720p/480p, H.264)
-- `actions.jsonl` (5Hz snapshots with `step_index`)
-- `compiled_actions.jsonl` (one action string per step)
+- `video.mp4` (2/3/5 FPS, 720p/480p, H.264)
+- `actions.jsonl` (one snapshot per frame with `step_index`)
+- `compiled_actions.jsonl` (one action string per frame)
 - `thoughts.jsonl` (aligned with `actions.jsonl`)
 - `auto_events.jsonl` (reserved, empty by default)
 - `options.json`, `meta.json`
@@ -52,7 +53,7 @@ Each session is written under `dataset_root/sessions/<session_name>/`:
 ## Notes & Constraints
 - Windows 10 21H2+ / Windows 11, x64.
 - Capture API is Windows Graphics Capture only.
-- Recording is 5 FPS with 720p or 480p letterbox (configurable in GUI).
+- Recording FPS is selectable (2/3/5) in the GUI.
 - Foreground-only input is enforced.
 - Capture fails if the window is invalid, hidden, minimized, cloaked, or
   fullscreen-like.
@@ -73,4 +74,10 @@ Notes:
 - `type` values: `key_down`, `key_up`, `mouse_move`, `mouse_wheel`, `mouse_button`.
 - `button` values: `left`, `right`, `middle`, `x1`, `x2`.
 - `qpc_ts` should be in the same units used by the pipeline; the CLI treats it
-  as an opaque timestamp and slices windows using `step_index * 200ms`.
+  as an opaque timestamp and slices windows using `step_index * step_ms`.
+
+## Timing Alignment
+- The GUI Record FPS sets `capture.fps` and `timing.step_ms` (approx `1000 / fps`).
+- `compiled_actions.jsonl` uses 6 bins per frame, so each `;` represents
+  roughly `step_ms / 6` (e.g. 500ms per frame -> ~83ms per bin).
+- `meta.json` now includes `record_fps` to make the chosen FPS explicit.

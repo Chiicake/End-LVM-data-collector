@@ -73,6 +73,14 @@
               </select>
             </div>
             <div class="field">
+              <label for="record-fps">Record FPS</label>
+              <select id="record-fps">
+                <option value="2" selected>2 FPS (500ms)</option>
+                <option value="3">3 FPS (333ms)</option>
+                <option value="5">5 FPS (200ms)</option>
+              </select>
+            </div>
+            <div class="field">
               <label for="target-hwnd">Target HWND (hex)</label>
               <input
                 id="target-hwnd"
@@ -272,13 +280,14 @@
         }
       }
 
-      function buildOptions(sessionName, resolutionValue) {
+      function buildOptions(sessionName, resolutionValue, fps) {
         const resolution = resolveResolution(resolutionValue);
+        const stepMs = Math.max(1, Math.floor(1000 / fps));
         return {
           schema_version: 1,
           capture: {
             api: "WindowsGraphicsCapture",
-            fps: 5,
+            fps: fps,
             record_resolution: resolution.size,
             resize_mode: "letterbox",
             color_format: "BGRA8",
@@ -298,8 +307,8 @@
           },
           timing: {
             clock: "QPC",
-            step_ms: 200,
-            fps: 5,
+            step_ms: stepMs,
+            fps: fps,
           },
           auto_events: {
             enabled: false,
@@ -309,7 +318,7 @@
         };
       }
 
-      function buildMeta(sessionName) {
+      function buildMeta(sessionName, fps) {
         return {
           session_id: sessionName,
           game: "",
@@ -317,6 +326,7 @@
           cpu: "unknown",
           gpu: "unknown",
           qpc_frequency_hz: 0,
+          record_fps: fps,
           build: {
             collector_version: "0.1.0",
             git_commit: "unknown",
@@ -355,6 +365,7 @@
         const hwndValue = Number.isFinite(pickerValue) ? pickerValue : manualValue;
         const cursorDebug = document.getElementById("cursor-debug").checked;
         const resolutionValue = document.getElementById("record-resolution").value;
+        const fpsValue = parseInt(document.getElementById("record-fps").value, 10) || 2;
 
         if (!Number.isFinite(hwndValue)) {
           log("Missing required session fields: target_hwnd (select a window).");
@@ -394,8 +405,8 @@
           session_name: sessionName,
           ffmpeg_path: ffmpegPath,
           target_hwnd: hwndValue,
-          options: buildOptions(sessionName, resolutionValue),
-          meta: buildMeta(sessionName),
+          options: buildOptions(sessionName, resolutionValue, fpsValue),
+          meta: buildMeta(sessionName, fpsValue),
           cursor_debug: cursorDebug,
         };
 

@@ -112,6 +112,9 @@ impl GuiSessionRunner {
                 dataset_root: config.dataset_root.clone(),
                 session_name: config.session_name.clone(),
                 ffmpeg_path: config.ffmpeg_path.clone(),
+                record_width: config.options.capture.record_resolution[0],
+                record_height: config.options.capture.record_resolution[1],
+                fps: config.options.capture.fps,
             })?;
             pipeline.write_options_meta(&config.options, &config.meta)?;
 
@@ -124,6 +127,7 @@ impl GuiSessionRunner {
                 config.target_hwnd,
                 config.cursor_debug,
                 pipeline,
+                config.options.timing.step_ms,
             )?;
             Ok(layout.root_dir)
         }
@@ -150,6 +154,9 @@ impl GuiSessionRunner {
                     dataset_root: config.dataset_root.clone(),
                     session_name: config.session_name.clone(),
                     ffmpeg_path: config.ffmpeg_path.clone(),
+                    record_width: config.options.capture.record_resolution[0],
+                    record_height: config.options.capture.record_resolution[1],
+                    fps: config.options.capture.fps,
                 })?;
                 pipeline.write_options_meta(&config.options, &config.meta)?;
                 let _ = tx.send(GuiStatus::Started {
@@ -180,6 +187,7 @@ impl GuiSessionRunner {
                             .unwrap_or_default()
                     },
                     &mut || stop_flag_thread.load(Ordering::SeqCst),
+                    config.options.timing.step_ms,
                 );
 
                 match result {

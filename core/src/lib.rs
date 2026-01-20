@@ -108,6 +108,7 @@ pub struct Meta {
     pub cpu: String,
     pub gpu: String,
     pub qpc_frequency_hz: u64,
+    pub record_fps: u32,
     pub build: BuildInfo,
     pub notes: String,
 }

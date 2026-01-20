@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use aggregator::CursorProvider;
 use capture::WgcCapture;
-use collector_core::{BuildInfo, InputEvent, Meta, Options, RECORD_HEIGHT, RECORD_WIDTH, STEP_MS};
+use collector_core::{BuildInfo, InputEvent, Meta, Options, RECORD_HEIGHT, RECORD_WIDTH};
 use app::pipeline::{ensure_dataset_root, PipelineConfig, SessionPipeline};
 
 fn main() {
@@ -21,16 +21,20 @@ fn run() -> io::Result<()> {
     let _ = args.cursor_debug;
     ensure_dataset_root(&args.dataset_root)?;
 
+    let options = build_options();
     let config = PipelineConfig {
         dataset_root: args.dataset_root.clone(),
         session_name: args.session_name.clone(),
         ffmpeg_path: args.ffmpeg_path.clone(),
+        record_width: options.capture.record_resolution[0],
+        record_height: options.capture.record_resolution[1],
+        fps: options.capture.fps,
     };
 
     let pipeline = SessionPipeline::create(config)?;
-    let options = build_options();
-    let meta = build_meta(&args.session_name);
+    let meta = build_meta(&args.session_name, options.capture.fps);
     pipeline.write_options_meta(&options, &meta)?;
+    let step_ms = options.timing.step_ms;
 
     let layout = if let Some(hwnd) = args.target_hwnd {
         let capture = WgcCapture::new(options.capture.clone(), hwnd)?;
@@ -48,6 +52,7 @@ fn run() -> io::Result<()> {
                 hwnd,
                 args.cursor_debug,
                 pipeline,
+                step_ms,
             )?
         }
         #[cfg(not(windows))]
@@ -83,8 +88,8 @@ fn run() -> io::Result<()> {
         let mut pipeline = pipeline;
         let mut event_index = 0usize;
         for step in 0..args.steps {
-            let window_start = step.saturating_mul(STEP_MS);
-            let window_end = window_start.saturating_add(STEP_MS);
+            let window_start = step.saturating_mul(step_ms);
+            let window_end = window_start.saturating_add(step_ms);
 
             while event_index < events.len() && events[event_index].qpc_ts < window_start {
                 event_index += 1;
@@ -295,7 +300,7 @@ fn build_options() -> Options {
     options
 }
 
-fn build_meta(session_id: &str) -> Meta {
+fn build_meta(session_id: &str, record_fps: u32) -> Meta {
     Meta {
         session_id: session_id.to_string(),
         game: "".to_string(),
@@ -303,6 +308,7 @@ fn build_meta(session_id: &str) -> Meta {
         cpu: "unknown".to_string(),
         gpu: "unknown".to_string(),
         qpc_frequency_hz: 0,
+        record_fps,
         build: BuildInfo {
             collector_version: "0.1.0".to_string(),
             git_commit: "unknown".to_string(),
