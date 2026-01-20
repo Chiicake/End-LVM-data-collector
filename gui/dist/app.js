@@ -61,8 +61,8 @@ function setStatus(label, meta) {
 
 function resolveResolution(value) {
   switch (value) {
-    case "640x480":
-      return { size: [640, 480], roi: "rois_config_640x480.json" };
+    case "854x480":
+      return { size: [854, 480], roi: "rois_config_854x480.json" };
     case "1280x720":
     default:
       return { size: [1280, 720], roi: "rois_config_1280x720.json" };
