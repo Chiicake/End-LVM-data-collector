@@ -119,7 +119,7 @@ impl GuiSessionRunner {
             pipeline.write_options_meta(&config.options, &config.meta)?;
 
             let capture = WgcCapture::new(config.options.capture.clone(), config.target_hwnd)?;
-            let input = RawInputCollector::new_with_target(Some(config.target_hwnd))?;
+            let input = RawInputCollector::new()?;
 
             let layout = app::pipeline::run_realtime_with_hwnd(
                 capture,
@@ -164,7 +164,7 @@ impl GuiSessionRunner {
                 });
 
                 let capture = WgcCapture::new(config.options.capture.clone(), config.target_hwnd)?;
-                let input = RawInputCollector::new_with_target(Some(config.target_hwnd))?;
+                let input = RawInputCollector::new()?;
                 let tx_frame = tx.clone();
 
                 let result = app::pipeline::run_realtime_with_hwnd_and_hook_and_thought_with_stop(

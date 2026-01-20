@@ -4,6 +4,8 @@ use std::io;
 use collector_core::{InputEvent, InputEventKind, MouseButton, QpcTimestamp};
 
 mod rawinput;
+#[cfg(windows)]
+mod polling;
 
 pub trait InputCollector {
     fn drain_events(&mut self, start: QpcTimestamp, end: QpcTimestamp) -> io::Result<Vec<InputEvent>>;
@@ -16,6 +18,8 @@ pub struct RawInputCollector {
     buffer: VecDeque<InputEvent>,
     max_events: usize,
     dropped_events: u64,
+    #[cfg(windows)]
+    polling: polling::PollingCollector,
 }
 
 impl RawInputCollector {
@@ -30,6 +34,8 @@ impl RawInputCollector {
             buffer: VecDeque::new(),
             max_events: DEFAULT_MAX_EVENTS,
             dropped_events: 0,
+            #[cfg(windows)]
+            polling: polling::PollingCollector::new()?,
         })
     }
 
@@ -40,6 +46,8 @@ impl RawInputCollector {
             buffer: VecDeque::new(),
             max_events: max_events.max(1),
             dropped_events: 0,
+            #[cfg(windows)]
+            polling: polling::PollingCollector::new()?,
         })
     }
 
@@ -73,6 +81,26 @@ impl InputCollector for RawInputCollector {
         while matches!(self.buffer.front(), Some(ev) if ev.qpc_ts < end) {
             if let Some(ev) = self.buffer.pop_front() {
                 out.push(ev);
+            }
+        }
+        #[cfg(windows)]
+        {
+            let has_keyboard = out.iter().any(|event| {
+                matches!(event.kind, InputEventKind::KeyDown { .. } | InputEventKind::KeyUp { .. })
+            });
+            let has_mouse = out.iter().any(|event| {
+                matches!(
+                    event.kind,
+                    InputEventKind::MouseMove { .. }
+                        | InputEventKind::MouseWheel { .. }
+                        | InputEventKind::MouseButton { .. }
+                )
+            });
+            if !has_keyboard || !has_mouse {
+                let polled = self.polling.sample(start, end, !has_keyboard, !has_mouse)?;
+                if !polled.is_empty() {
+                    out.extend(polled);
+                }
             }
         }
         Ok(out)

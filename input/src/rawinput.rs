@@ -8,6 +8,8 @@ use std::mem::size_of;
 #[cfg(windows)]
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 #[cfg(windows)]
+use std::sync::{Mutex, OnceLock};
+#[cfg(windows)]
 use std::thread::{self, JoinHandle};
 
 #[cfg(windows)]
@@ -18,7 +20,7 @@ use crate::keyboard_key_name;
 
 #[cfg(windows)]
 use windows::Win32::Foundation::{
-    GetLastError, HWND, LPARAM, LRESULT, WPARAM, ERROR_CLASS_ALREADY_EXISTS,
+    GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM, ERROR_CLASS_ALREADY_EXISTS,
 };
 #[cfg(windows)]
 use windows::Win32::System::Performance::QueryPerformanceCounter;
@@ -31,15 +33,33 @@ use windows::Win32::UI::Input::{
 };
 #[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrW,
-    GetForegroundWindow, PostThreadMessageW, RegisterClassW, SetWindowLongPtrW,
-    TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWLP_USERDATA, HMENU, MSG,
-    RI_KEY_BREAK, RI_MOUSE_BUTTON_4_DOWN, RI_MOUSE_BUTTON_4_UP, RI_MOUSE_BUTTON_5_DOWN,
-    RI_MOUSE_BUTTON_5_UP, RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP,
-    RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP, RI_MOUSE_RIGHT_BUTTON_DOWN,
-    RI_MOUSE_RIGHT_BUTTON_UP, RI_MOUSE_WHEEL, WM_INPUT, WM_NCDESTROY, WM_QUIT, WNDCLASSW,
-    WS_OVERLAPPEDWINDOW,
+    CallNextHookEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW,
+    GetWindowLongPtrW, GetForegroundWindow, PostThreadMessageW, RegisterClassW, SetWindowLongPtrW,
+    SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT,
+    GWLP_USERDATA, HC_ACTION, HHOOK, HMENU, KBDLLHOOKSTRUCT, MSG, RI_KEY_BREAK,
+    RI_MOUSE_BUTTON_4_DOWN, RI_MOUSE_BUTTON_4_UP, RI_MOUSE_BUTTON_5_DOWN, RI_MOUSE_BUTTON_5_UP,
+    RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP, RI_MOUSE_MIDDLE_BUTTON_DOWN,
+    RI_MOUSE_MIDDLE_BUTTON_UP, RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_UP,
+    RI_MOUSE_WHEEL, WH_KEYBOARD_LL, WM_INPUT, WM_KEYDOWN, WM_KEYUP, WM_NCDESTROY, WM_QUIT,
+    WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_OVERLAPPEDWINDOW,
 };
+
+#[cfg(windows)]
+struct HookState {
+    sender: Option<Sender<InputEvent>>,
+    target_hwnd: Option<HWND>,
+}
+
+#[cfg(windows)]
+static HOOK_STATE: OnceLock<Mutex<HookState>> = OnceLock::new();
+
+#[cfg(windows)]
+fn hook_state() -> &'static Mutex<HookState> {
+    HOOK_STATE.get_or_init(|| Mutex::new(HookState {
+        sender: None,
+        target_hwnd: None,
+    }))
+}
 
 #[cfg(windows)]
 pub struct RawInputCollectorImpl {
@@ -152,11 +172,22 @@ fn run_message_loop(
         }
 
         let ctx = RawInputContext {
-            sender: tx,
+            sender: tx.clone(),
             target_hwnd: target_hwnd.map(|hwnd| HWND(hwnd)),
         };
         let tx_box = Box::new(ctx);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(tx_box) as isize);
+        if let Ok(mut state) = hook_state().lock() {
+            state.sender = Some(tx.clone());
+            state.target_hwnd = target_hwnd.map(|value| HWND(value));
+        }
+        let hook = SetWindowsHookExW(
+            WH_KEYBOARD_LL,
+            Some(keyboard_hook_proc),
+            HINSTANCE(0),
+            0,
+        )
+        .ok();
 
         let devices = [
             RAWINPUTDEVICE {
@@ -187,6 +218,13 @@ fn run_message_loop(
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+        if let Some(hhook) = hook {
+            let _ = UnhookWindowsHookEx(hhook);
+        }
+        if let Ok(mut state) = hook_state().lock() {
+            state.sender = None;
+            state.target_hwnd = None;
+        }
     }
 }
 
@@ -214,6 +252,50 @@ unsafe extern "system" fn window_proc(
         }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),
     }
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn keyboard_hook_proc(
+    code: i32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if code == HC_ACTION as i32 {
+        let state_guard = hook_state().lock().ok();
+        if let Some(state) = state_guard {
+            if let Some(target) = state.target_hwnd {
+                if GetForegroundWindow() != target {
+                    return CallNextHookEx(HHOOK(0), code, wparam, lparam);
+                }
+            }
+            let msg = wparam.0 as u32;
+            let is_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+            let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+            if is_down || is_up {
+                let data = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+                let vkey = data.vkCode as u16;
+                if vkey != 255 {
+                    if let Some(name) = keyboard_key_name(vkey) {
+                        if let Ok(ts) = qpc_now() {
+                            if let Some(sender) = state.sender.as_ref() {
+                                let kind = if is_down {
+                                    InputEventKind::KeyDown {
+                                        key: name.to_string(),
+                                    }
+                                } else {
+                                    InputEventKind::KeyUp {
+                                        key: name.to_string(),
+                                    }
+                                };
+                                let _ = sender.send(InputEvent { qpc_ts: ts, kind });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    CallNextHookEx(HHOOK(0), code, wparam, lparam)
 }
 
 #[cfg(windows)]

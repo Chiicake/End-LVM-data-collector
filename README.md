@@ -32,7 +32,7 @@ Build from source (Windows, need rust toolchain):
 ```bash
 git clone https://github.com/Chiicake/End-VLM-data-collector.git
 cargo build -p gui --features tauri --release
-move ./target/release/collector-gui.exe ./gui
+move ./target/release/collector-gui.exe ./
 ./gui/collector-gui.exe
 ```
 
