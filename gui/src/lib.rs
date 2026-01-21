@@ -43,6 +43,7 @@ pub struct GuiSessionHandle {
     pub rx: mpsc::Receiver<GuiStatus>,
     join: JoinHandle<io::Result<PathBuf>>,
     thought: Arc<Mutex<String>>,
+    goals: Arc<Mutex<GoalState>>,
     stop: Arc<AtomicBool>,
 }
 
@@ -66,9 +67,25 @@ impl GuiSessionHandle {
         Ok(())
     }
 
+    pub fn set_goals(&self, long_goal: String, mid_goal: String) -> io::Result<()> {
+        let mut guard = self
+            .goals
+            .lock()
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "goals lock poisoned"))?;
+        guard.long = long_goal;
+        guard.mid = mid_goal;
+        Ok(())
+    }
+
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
     }
+}
+
+#[derive(Debug, Default, Clone)]
+struct GoalState {
+    long: String,
+    mid: String,
 }
 
 #[derive(Debug, Clone)]
@@ -147,6 +164,8 @@ impl GuiSessionRunner {
             let (tx, rx) = mpsc::channel();
             let thought_state = Arc::new(Mutex::new(String::new()));
             let thought_state_thread = Arc::clone(&thought_state);
+            let goals_state = Arc::new(Mutex::new(GoalState::default()));
+            let goals_state_thread = Arc::clone(&goals_state);
             let stop_flag = Arc::new(AtomicBool::new(false));
             let stop_flag_thread = Arc::clone(&stop_flag);
             let handle = std::thread::spawn(move || {
@@ -186,6 +205,12 @@ impl GuiSessionRunner {
                             .map(|value| value.clone())
                             .unwrap_or_default()
                     },
+                    &mut || {
+                        goals_state_thread
+                            .lock()
+                            .map(|value| (value.long.clone(), value.mid.clone()))
+                            .unwrap_or_else(|_| (String::new(), String::new()))
+                    },
                     &mut || stop_flag_thread.load(Ordering::SeqCst),
                     config.options.timing.step_ms,
                 );
@@ -209,6 +234,7 @@ impl GuiSessionRunner {
                 rx,
                 join: handle,
                 thought: thought_state,
+                goals: goals_state,
                 stop: stop_flag,
             })
         }

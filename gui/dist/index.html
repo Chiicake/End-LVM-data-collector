@@ -80,7 +80,7 @@
                 <option value="5">5 FPS (200ms)</option>
               </select>
             </div>
-            <div class="field">
+            <div class="field is-hidden">
               <label for="target-hwnd">Target HWND (hex)</label>
               <input
                 id="target-hwnd"
@@ -89,11 +89,29 @@
                 spellcheck="false"
               />
             </div>
-            <div class="field inline">
+            <div class="field inline is-hidden">
               <label>
                 <input id="cursor-debug" type="checkbox" />
                 Cursor Debug
               </label>
+            </div>
+            <div class="field">
+              <label for="goal-long-input">Long Goal</label>
+              <input
+                id="goal-long-input"
+                type="text"
+                placeholder="long goal"
+                spellcheck="false"
+              />
+            </div>
+            <div class="field">
+              <label for="goal-mid-input">Mid Goal</label>
+              <input
+                id="goal-mid-input"
+                type="text"
+                placeholder="mid goal"
+                spellcheck="false"
+              />
             </div>
             <div class="field wide">
               <label for="thought-input">Labeling Instruct</label>
@@ -244,6 +262,8 @@
       const refreshWindowsBtn = document.getElementById("refresh-windows");
       const refreshSessionNameBtn = document.getElementById("refresh-session-name");
       const thoughtInput = document.getElementById("thought-input");
+      const goalLongInput = document.getElementById("goal-long-input");
+      const goalMidInput = document.getElementById("goal-mid-input");
 
       const startSessionBtn = document.getElementById("start-session");
       const startPackageBtn = document.getElementById("start-package");
@@ -253,6 +273,8 @@
       let packageId = null;
       let thoughtTimer = null;
       const THOUGHT_DEBOUNCE_MS = 250;
+      let goalTimer = null;
+      const GOAL_DEBOUNCE_MS = 250;
 
       function log(line) {
         const entry = document.createElement("div");
@@ -416,6 +438,7 @@
           setStatus("Recording", "Session running");
           startSessionBtn.textContent = "Stop Session";
           sendThoughtUpdate(true);
+          sendGoalUpdate(true);
         } catch (err) {
           log(`Start failed: ${err}`);
           setStatus("Idle", "Error starting session");
@@ -423,7 +446,6 @@
       }
 
       function renderWindowList(entries) {
-        const previous = windowPicker.value;
         windowPicker.innerHTML = "";
 
         const placeholder = document.createElement("option");
@@ -438,8 +460,21 @@
           windowPicker.appendChild(option);
         });
 
-        if (previous) {
-          windowPicker.value = previous;
+        let matched = entries.find((entry) => entry.title.includes("Endfield"));
+        if (!matched) {
+          matched = entries.find((entry) => entry.title.includes("模拟器"));
+        }
+        if (matched) {
+          windowPicker.value = String(matched.hwnd);
+        } else {
+          windowPicker.value = "";
+        }
+
+        const selected = parseHwnd(windowPicker.value);
+        if (Number.isFinite(selected)) {
+          document.getElementById("target-hwnd").value = formatHwnd(selected);
+        } else {
+          document.getElementById("target-hwnd").value = "";
         }
       }
 
@@ -588,6 +623,24 @@
         }, THOUGHT_DEBOUNCE_MS);
       }
 
+      function sendGoalUpdate(force) {
+        if (sessionId == null || !resolveTauriInvoke()) return;
+        const longGoal = goalLongInput?.value ?? "";
+        const midGoal = goalMidInput?.value ?? "";
+        invokeCommand("set_goals", { id: sessionId, longGoal, midGoal }).catch((err) => {
+          log(`Goal update failed: ${err}`);
+        });
+      }
+
+      function scheduleGoalUpdate() {
+        if (goalTimer) {
+          clearTimeout(goalTimer);
+        }
+        goalTimer = setTimeout(() => {
+          sendGoalUpdate(false);
+        }, GOAL_DEBOUNCE_MS);
+      }
+
       startSessionBtn.addEventListener("click", () => {
         if (sessionId == null) {
           startSession();
@@ -599,6 +652,8 @@
       joinPackageBtn.addEventListener("click", joinPackage);
       refreshWindowsBtn.addEventListener("click", refreshWindowList);
       thoughtInput.addEventListener("input", scheduleThoughtUpdate);
+      goalLongInput.addEventListener("input", scheduleGoalUpdate);
+      goalMidInput.addEventListener("input", scheduleGoalUpdate);
       windowPicker.addEventListener("change", () => {
         const selected = parseHwnd(windowPicker.value);
         if (Number.isFinite(selected)) {

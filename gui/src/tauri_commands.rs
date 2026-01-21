@@ -102,6 +102,20 @@ pub fn set_thought(id: u64, text: String, state: State<GuiState>) -> Result<(), 
 }
 
 #[tauri::command]
+pub fn set_goals(
+    id: u64,
+    long_goal: String,
+    mid_goal: String,
+    state: State<GuiState>,
+) -> Result<(), String> {
+    let sessions = state.sessions.lock().map_err(|_| "lock poisoned")?;
+    let handle = sessions.get(&id).ok_or_else(|| "unknown session id".to_string())?;
+    handle
+        .set_goals(long_goal, mid_goal)
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
 pub fn start_package(request: PackageRequest, state: State<GuiState>) -> Result<u64, String> {
     let handle = start_package_async(request).map_err(|err| err.to_string())?;
     let id = state.next_id.fetch_add(1, Ordering::Relaxed);

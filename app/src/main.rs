@@ -110,6 +110,8 @@ fn run() -> io::Result<()> {
                 &cursor,
                 &frame,
                 thought,
+                None,
+                None,
             )?;
         }
         pipeline.finalize()?

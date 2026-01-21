@@ -47,6 +47,7 @@ Each session is written under `dataset_root/sessions/<session_name>/`:
 - `actions.jsonl` (one snapshot per frame with `step_index`)
 - `compiled_actions.jsonl` (one action string per frame)
 - `labeling_instruct.jsonl` (aligned with `actions.jsonl`)
+- `goal.jsonl` (aligned with `actions.jsonl`)
 - `auto_events.jsonl` (reserved, empty by default)
 - `options.json`, `meta.json`
 

@@ -31,6 +31,8 @@ const logOutput = document.getElementById("log-output");
 const windowPicker = document.getElementById("window-picker");
 const refreshWindowsBtn = document.getElementById("refresh-windows");
 const thoughtInput = document.getElementById("thought-input");
+const goalLongInput = document.getElementById("goal-long-input");
+const goalMidInput = document.getElementById("goal-mid-input");
 
 const startSessionBtn = document.getElementById("start-session");
 const joinSessionBtn = document.getElementById("join-session");
@@ -41,6 +43,8 @@ let sessionId = null;
 let packageId = null;
 let thoughtTimer = null;
 const THOUGHT_DEBOUNCE_MS = 250;
+let goalTimer = null;
+const GOAL_DEBOUNCE_MS = 250;
 
 function log(line) {
   const entry = document.createElement("div");
@@ -177,6 +181,7 @@ async function startSession() {
     log(`Session started: id=${sessionId}`);
     setStatus("Recording", "Session running");
     sendThoughtUpdate(true);
+    sendGoalUpdate(true);
   } catch (err) {
     log(`Start failed: ${err}`);
     setStatus("Idle", "Error starting session");
@@ -184,7 +189,6 @@ async function startSession() {
 }
 
 function renderWindowList(entries) {
-  const previous = windowPicker.value;
   windowPicker.innerHTML = "";
 
   const placeholder = document.createElement("option");
@@ -199,8 +203,21 @@ function renderWindowList(entries) {
     windowPicker.appendChild(option);
   });
 
-  if (previous) {
-    windowPicker.value = previous;
+  let matched = entries.find((entry) => entry.title.includes("Endfield"));
+  if (!matched) {
+    matched = entries.find((entry) => entry.title.includes("模拟器"));
+  }
+  if (matched) {
+    windowPicker.value = String(matched.hwnd);
+  } else {
+    windowPicker.value = "";
+  }
+
+  const selected = parseHwnd(windowPicker.value);
+  if (Number.isFinite(selected)) {
+    document.getElementById("target-hwnd").value = formatHwnd(selected);
+  } else {
+    document.getElementById("target-hwnd").value = "";
   }
 }
 
@@ -326,12 +343,32 @@ function scheduleThoughtUpdate() {
   }, THOUGHT_DEBOUNCE_MS);
 }
 
+function sendGoalUpdate(force) {
+  if (sessionId == null || !resolveTauriInvoke()) return;
+  const longGoal = goalLongInput?.value ?? "";
+  const midGoal = goalMidInput?.value ?? "";
+  invokeCommand("set_goals", { id: sessionId, longGoal, midGoal }).catch((err) => {
+    log(`Goal update failed: ${err}`);
+  });
+}
+
+function scheduleGoalUpdate() {
+  if (goalTimer) {
+    clearTimeout(goalTimer);
+  }
+  goalTimer = setTimeout(() => {
+    sendGoalUpdate(false);
+  }, GOAL_DEBOUNCE_MS);
+}
+
 startSessionBtn.addEventListener("click", startSession);
 joinSessionBtn.addEventListener("click", joinSession);
 startPackageBtn.addEventListener("click", startPackage);
 joinPackageBtn.addEventListener("click", joinPackage);
 refreshWindowsBtn.addEventListener("click", refreshWindowList);
 thoughtInput.addEventListener("input", scheduleThoughtUpdate);
+goalLongInput.addEventListener("input", scheduleGoalUpdate);
+goalMidInput.addEventListener("input", scheduleGoalUpdate);
 windowPicker.addEventListener("change", () => {
   const selected = parseHwnd(windowPicker.value);
   if (Number.isFinite(selected)) {

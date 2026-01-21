@@ -137,6 +137,10 @@ h1 {
   gap: 10px;
 }
 
+.is-hidden {
+  display: none !important;
+}
+
 label {
   font-weight: 600;
 }

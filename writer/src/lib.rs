@@ -16,6 +16,7 @@ pub struct SessionLayout {
     pub actions_path: PathBuf,
     pub compiled_path: PathBuf,
     pub thoughts_path: PathBuf,
+    pub goals_path: PathBuf,
     pub auto_events_path: PathBuf,
     pub options_path: PathBuf,
     pub meta_path: PathBuf,
@@ -31,6 +32,7 @@ impl SessionLayout {
             actions_path: temp_dir.join("actions.jsonl"),
             compiled_path: temp_dir.join("compiled_actions.jsonl"),
             thoughts_path: temp_dir.join("labeling_instruct.jsonl"),
+            goals_path: temp_dir.join("goal.jsonl"),
             auto_events_path: temp_dir.join("auto_events.jsonl"),
             options_path: temp_dir.join("options.json"),
             meta_path: temp_dir.join("meta.json"),
@@ -145,6 +147,7 @@ pub struct SessionWriter {
     actions: JsonlWriter<BufWriter<File>>,
     compiled: JsonlWriter<BufWriter<File>>,
     thoughts: JsonlWriter<BufWriter<File>>,
+    goals: JsonlWriter<BufWriter<File>>,
     auto_events: JsonlWriter<BufWriter<File>>,
 }
 
@@ -183,6 +186,11 @@ impl SessionWriter {
             flush_every_lines,
             flush_every,
         );
+        let goals = JsonlWriter::new(
+            BufWriter::new(File::create(&layout.goals_path)?),
+            flush_every_lines,
+            flush_every,
+        );
         let auto_events = JsonlWriter::new(
             BufWriter::new(File::create(&layout.auto_events_path)?),
             flush_every_lines,
@@ -198,6 +206,7 @@ impl SessionWriter {
             actions,
             compiled,
             thoughts,
+            goals,
             auto_events,
         })
     }
@@ -214,6 +223,10 @@ impl SessionWriter {
 
     pub fn write_thought(&mut self, thought_line: &str) -> io::Result<()> {
         self.thoughts.write_line(thought_line)
+    }
+
+    pub fn write_goal(&mut self, goal_line: &str) -> io::Result<()> {
+        self.goals.write_line(goal_line)
     }
 
     pub fn write_auto_event<T: Serialize>(&mut self, event: &T) -> io::Result<()> {
@@ -239,12 +252,14 @@ impl SessionWriter {
             mut actions,
             mut compiled,
             mut thoughts,
+            mut goals,
             mut auto_events,
         } = self;
 
         actions.flush()?;
         compiled.flush()?;
         thoughts.flush()?;
+        goals.flush()?;
         auto_events.flush()?;
         ffmpeg.finish()?;
 

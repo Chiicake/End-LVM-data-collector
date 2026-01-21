@@ -3,7 +3,7 @@
 mod tauri_commands;
 
 use tauri_commands::{
-    join_package, join_session, list_windows, poll_package, poll_session, set_thought,
+    join_package, join_session, list_windows, poll_package, poll_session, set_goals, set_thought,
     start_package, start_session, stop_session, validate_ffmpeg, validate_session_name, GuiState,
 };
 use std::path::PathBuf;
@@ -84,6 +84,7 @@ fn main() {
             join_session,
             stop_session,
             set_thought,
+            set_goals,
             validate_ffmpeg,
             validate_session_name,
             start_package,

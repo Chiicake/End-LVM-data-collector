@@ -34,6 +34,7 @@ const DEFAULT_FLUSH_LINES: u64 = 10;
 const DEFAULT_FLUSH_SECS: u64 = 1;
 const THOUGHT_TEMPLATE: &str =
     "<|labeling_instruct_start|>Labeling Instruct <|labeling_instruct_end|>";
+const GOAL_TEMPLATE: &str = "<|goal start|> long goal / mid goal <|goal end|>";
 
 pub struct PipelineConfig {
     pub dataset_root: PathBuf,
@@ -83,6 +84,8 @@ impl SessionPipeline {
         cursor: &CursorProvider,
         frame: &[u8],
         thought_content: Option<&str>,
+        goal_long: Option<&str>,
+        goal_mid: Option<&str>,
     ) -> io::Result<()> {
         let aggregated = aggregate_window_with_compiled(
             events,
@@ -98,6 +101,8 @@ impl SessionPipeline {
         self.writer.write_frame(frame)?;
         let thought_line = format_thought_line(thought_content.unwrap_or_default());
         self.writer.write_thought(&thought_line)?;
+        let goal_line = format_goal_line(goal_long.unwrap_or_default(), goal_mid.unwrap_or_default());
+        self.writer.write_goal(&goal_line)?;
         Ok(())
     }
 
@@ -149,6 +154,8 @@ pub fn run_realtime<S: FrameSource, I: InputCollector>(
             &cursor_sample,
             &frame.data,
             None,
+            None,
+            None,
         )?;
     }
 
@@ -197,6 +204,7 @@ pub fn run_realtime_with_hwnd_and_hook<
         pipeline,
         &mut on_frame,
         &mut || String::new(),
+        &mut || (String::new(), String::new()),
         step_ms,
     )
 }
@@ -207,6 +215,7 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought<
     I: InputCollector,
     F: FnMut(&FrameRecord, bool, &CursorProvider),
     T: FnMut() -> String,
+    G: FnMut() -> (String, String),
 >(
     mut capture: S,
     mut input: I,
@@ -215,6 +224,7 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought<
     mut pipeline: SessionPipeline,
     on_frame: &mut F,
     thought_provider: &mut T,
+    goal_provider: &mut G,
     step_ms: u64,
 ) -> io::Result<SessionLayout> {
     run_realtime_with_hwnd_and_hook_and_thought_with_stop(
@@ -225,6 +235,7 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought<
         pipeline,
         on_frame,
         thought_provider,
+        goal_provider,
         &mut || false,
         step_ms,
     )
@@ -236,6 +247,7 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought_with_stop<
     I: InputCollector,
     F: FnMut(&FrameRecord, bool, &CursorProvider),
     T: FnMut() -> String,
+    G: FnMut() -> (String, String),
     P: FnMut() -> bool,
 >(
     mut capture: S,
@@ -245,6 +257,7 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought_with_stop<
     mut pipeline: SessionPipeline,
     on_frame: &mut F,
     thought_provider: &mut T,
+    goal_provider: &mut G,
     should_stop: &mut P,
     step_ms: u64,
 ) -> io::Result<SessionLayout> {
@@ -317,6 +330,7 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought_with_stop<
         }
 
         let thought_line = thought_provider();
+        let (goal_long, goal_mid) = goal_provider();
         pipeline.process_window(
             &events,
             window_start,
@@ -326,6 +340,8 @@ pub fn run_realtime_with_hwnd_and_hook_and_thought_with_stop<
             &cursor,
             &frame.data,
             Some(thought_line.as_str()),
+            Some(goal_long.as_str()),
+            Some(goal_mid.as_str()),
         )?;
     }
 
@@ -543,6 +559,34 @@ pub fn format_thought_line(content: &str) -> String {
             trimmed
         )
     }
+}
+
+pub fn format_goal_line(long_goal: &str, mid_goal: &str) -> String {
+    let long_trimmed = long_goal.trim();
+    let mid_trimmed = mid_goal.trim();
+    if long_trimmed.contains("<|goal start|>") && long_trimmed.contains("<|goal end|>") {
+        return long_trimmed.to_string();
+    }
+    if mid_trimmed.contains("<|goal start|>") && mid_trimmed.contains("<|goal end|>") {
+        return mid_trimmed.to_string();
+    }
+    if long_trimmed.is_empty() && mid_trimmed.is_empty() {
+        return GOAL_TEMPLATE.to_string();
+    }
+    let long_value = if long_trimmed.is_empty() {
+        "long goal"
+    } else {
+        long_trimmed
+    };
+    let mid_value = if mid_trimmed.is_empty() {
+        "mid goal"
+    } else {
+        mid_trimmed
+    };
+    format!(
+        "<|goal start|> {} / {} <|goal end|>",
+        long_value, mid_value
+    )
 }
 
 pub fn ensure_dataset_root(path: &Path) -> io::Result<()> {
