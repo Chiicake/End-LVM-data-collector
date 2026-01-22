@@ -186,7 +186,7 @@ impl Options {
                 record_resolution: [RECORD_WIDTH, RECORD_HEIGHT],
                 resize_mode: ResizeMode::Letterbox,
                 color_format: ColorFormat::Bgra8,
-                include_cursor_in_video: false,
+                include_cursor_in_video: true,
                 target: CaptureTarget {
                     method: "gui".to_string(),
                     window_title: None,

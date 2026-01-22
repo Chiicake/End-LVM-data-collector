@@ -84,7 +84,7 @@ function buildOptions(sessionName, resolutionValue, fps) {
       record_resolution: resolution.size,
       resize_mode: "letterbox",
       color_format: "BGRA8",
-      include_cursor_in_video: false,
+      include_cursor_in_video: true,
       target: {
         method: "gui",
         window_title: null,
@@ -205,7 +205,7 @@ function renderWindowList(entries) {
 
   let matched = entries.find((entry) => entry.title.includes("Endfield"));
   if (!matched) {
-    matched = entries.find((entry) => entry.title.includes("模拟器"));
+    matched = entries.find((entry) => entry.title.includes("终末地"));
   }
   if (matched) {
     windowPicker.value = String(matched.hwnd);
