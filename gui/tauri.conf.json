@@ -17,6 +17,7 @@
       "active": true,
       "identifier": "com.endlvm.collector-gui",
       "targets": ["msi"],
+      "icon": ["icons/icon.ico"],
       "externalBin": []
     },
     "security": {
